@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "latest": "2026.10.11-pilot",
+  "releases": [
+    {
+      "id": "2026.10.11-pilot",
+      "version": "2026.10.11 pilot",
+      "date": "2026-10-11",
+      "channel": "development",
+      "platform": "Windows 11 x64",
+      "signed": false,
+      "url": "/downloads/2026.10.11-pilot/DesktopGuide-windows-x64-pilot.zip",
+      "sha256": "e73fa1eff9691cad19c9b805c69c83bb09248373d69d9513f1d46533adffd87e",
+      "bytes": 96363210,
+      "notes": "Windows development pilot with an offline walkthrough, invite-only cloud sign-in, guided lesson flows, optional pointing, and separately approved single-action demonstrations. Includes the .NET runtime. This portable ZIP is unsigned; broader real-workflow and accessibility qualification is still in progress."
+    }
+  ]
+}

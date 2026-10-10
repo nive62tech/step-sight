@@ -154,7 +154,7 @@ public sealed class LessonController : IDisposable
             {
                 machine.Transition(LessonState.Completed); previous = null;
                 Presentation?.Invoke("Lesson complete", "The final visible outcome was confirmed by the configured provider.", result.Provider);
-                Permissions.Revoke(); activity.ObservationEnabled = false; return;
+                Permissions.Revoke(); capture.StopCapture(); pointer.Hide(); activity.ObservationEnabled = false; return;
             }
             if (result.Step is null) throw new SafetyException("No grounded next step; reobserve or ask for help");
             previous = result.Step; proposal = result.ActionProposal;
@@ -163,7 +163,7 @@ public sealed class LessonController : IDisposable
             ProposalChanged?.Invoke(proposal);
             machine.Transition(LessonState.WaitingForLearner);
             lastActivity = DateTimeOffset.UtcNow;
-            if (pointAllowed && mode != InteractionMode.Practice && previous.Target is not null) await ShowWhereAsync();
+            if (mode != InteractionMode.Practice) await ShowWhereAsync();
             if (NarrationEnabled) await NarrateAsync(previous.Instruction + " " + previous.Explanation, epoch);
         }
         catch (OperationCanceledException) { }
@@ -199,20 +199,39 @@ public sealed class LessonController : IDisposable
 
     public async Task ShowWhereAsync()
     {
-        if (source is null || frame is null || previous?.Target is null || State != LessonState.WaitingForLearner) return;
+        if (source is null || frame is null || previous is null || State != LessonState.WaitingForLearner) return;
+        if (previous.Target is null) { Notice?.Invoke("The live analysis couldn't locate a reliable target. Follow the explanation or check the screen again."); return; }
+        var selected = source; var original = frame; var step = previous;
+        var epoch = Permissions.Epoch; var token = Permissions.Cancellation;
+        pointer.Hide();
         try
         {
-            if (previous.SourceObservationId != frame.Observation.Id) throw new SafetyException("The original target is stale. Reobserve and recover before pointing.");
+            if (step.SourceObservationId != original.Observation.Id) throw new SafetyException("The original target is stale. Reobserve and recover before pointing.");
             if (mode == InteractionMode.Practice) throw new SafetyException("Switch modes with fresh consent to enable pointer guidance");
-            var fresh = await capture.CaptureAsync(source, Masks, Permissions.Cancellation);
-            if (fresh.Geometry != frame.Geometry || fresh.PixelDigest != frame.PixelDigest)
-            { Notice?.Invoke("Screen changed. Reobserve before pointing."); return; }
             machine.Transition(LessonState.Pointing);
-            await pointer.PointAsync(frame, previous.Target, source, Permissions.Cancellation);
+            if (!tracker.IsForegroundAndVisible(selected))
+            {
+                Notice?.Invoke("Switch back to your selected window within five seconds. The guide will point once it is in front.");
+                var focusDeadline = Stopwatch.StartNew();
+                while (!tracker.IsForegroundAndVisible(selected))
+                {
+                    if (focusDeadline.Elapsed > TimeSpan.FromSeconds(5)) throw new SafetyException("Pointing paused. Focus your selected window, then use Show me where again.");
+                    await Task.Delay(100, token);
+                }
+            }
+            token.ThrowIfCancellationRequested();
+            var fresh = await capture.CaptureAsync(selected, Masks, token);
+            token.ThrowIfCancellationRequested(); if (epoch != Permissions.Epoch) return;
+            if (!tracker.IsGuidanceTargetCurrent(original, fresh, step.Target!))
+            { Notice?.Invoke("Screen changed. Reobserve before pointing."); return; }
+            pointer.SetHint(step.Instruction, step.ExpectedUserAction);
+            if (pointAllowed) await pointer.PointAsync(fresh, step.Target!, selected, token);
+            else await pointer.ShowVisualAsync(fresh, step.Target!, selected, token);
+            if (epoch == Permissions.Epoch) Notice?.Invoke("");
         }
         catch (OperationCanceledException) { }
         catch (SafetyException ex) { Notice?.Invoke(ex.Message); }
-        finally { if (State == LessonState.Pointing) machine.Transition(LessonState.WaitingForLearner); }
+        finally { if (epoch == Permissions.Epoch && State == LessonState.Pointing) machine.Transition(LessonState.WaitingForLearner); }
     }
 
     public async Task DemonstrateAsync(ActionProposal approvedProposal)
@@ -311,6 +330,7 @@ public sealed class LessonController : IDisposable
     private async Task PollForChangeAsync()
     {
         if (Interlocked.Exchange(ref polling, 1) != 0) return;
+        lastAutomaticObservation = DateTimeOffset.UtcNow;
         try
         {
             if (source is null || frame is null || State is not (LessonState.WaitingForLearner or LessonState.WaitingForApplication or LessonState.Recovering)) return;
@@ -331,7 +351,7 @@ public sealed class LessonController : IDisposable
     private void Unavailable() => Interrupt(LessonState.PrivacyPaused);
     private void Interrupt(LessonState state)
     {
-        Permissions.Revoke(); pointer.Hide(); speech.Stop(); microphone.Cancel(); executor.ReleaseHeldControls();
+        Permissions.Revoke(); capture.StopCapture(); pointer.Hide(); speech.Stop(); microphone.Cancel(); executor.ReleaseHeldControls();
         activity.ObservationEnabled = false;
         proposal = null; ProposalChanged?.Invoke(null); debounce?.Cancel();
         if (State is not (LessonState.Stopped or LessonState.Idle or LessonState.Completed)) machine.Transition(state);

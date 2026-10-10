@@ -13,9 +13,9 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://desktopguide:development-only@127.0.0.1:5432/desktopguide"
     gcp_project_id: str = ""
     gcp_location: str = "global"
-    gemini_guidance_model: str = "gemini-3.8-flash"
-    gemini_verification_model: str = "gemini-3.8-flash"
-    gemini_transcription_model: str = "gemini-3.8-flash"
+    gemini_guidance_model: str = "gemini-3.1-flash-lite"
+    gemini_verification_model: str = "gemini-3.1-flash-lite"
+    gemini_transcription_model: str = "gemini-3.1-flash-lite"
     gemini_computer_use_enabled: bool = False
     cognito_issuer: str = ""
     cognito_client_id: str = ""
@@ -31,9 +31,10 @@ class Settings(BaseSettings):
     user_monthly_ai_budget_usd: float = Field(default=4, gt=0, le=100)
     max_model_turns: int = Field(default=60, ge=1, le=100)
     provider_timeout_seconds: int = Field(default=30, ge=1, le=60)
-    # Conservative standard-pricing estimates. Reviewed rates, not provider billing guarantees.
-    input_price_per_million: float = 1.5
-    output_price_per_million: float = 7.5
+    # Flash-Lite global rates: audio input is $0.50/M, image/text $0.25/M.
+    # Use the higher audio rate for the shared estimate; include thinking in output.
+    input_price_per_million: float = 0.5
+    output_price_per_million: float = 1.5
     max_output_tokens: int = 4096
     max_context_chars: int = 14000
 

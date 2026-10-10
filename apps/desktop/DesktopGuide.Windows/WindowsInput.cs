@@ -30,9 +30,52 @@ internal static class InputNative
 
 public sealed class WindowsPointer(PermissionSupervisor supervisor, IWindowTracker tracker, IUserActivityObserver activity) : IPointerGuide
 {
+    private readonly object visibilityGate = new();
+    private long visibilityVersion;
+    private System.Threading.Timer? visibilityWatch;
+    public event Action<(int X, int Y)>? TravelShown;
     public event Action<(int X, int Y)>? TargetShown;
     public event Action? TargetHidden;
     public bool ReducedMotion { get; set; }
+    public string Instruction { get; private set; } = "";
+    public string ExpectedAction { get; private set; } = "click";
+    public PhysicalRect? TargetBounds { get; private set; }
+    private void SetBounds(ScreenFrame frame, Target target)
+    {
+        var a = frame.Geometry.Map(target.Bounds.Left, target.Bounds.Top);
+        var b = frame.Geometry.Map(target.Bounds.Right, target.Bounds.Bottom);
+        TargetBounds = new(a.X, a.Y, Math.Max(1, b.X - a.X + 1), Math.Max(1, b.Y - a.Y + 1));
+    }
+    public void SetHint(string instruction, string expectedAction) { Instruction = instruction; ExpectedAction = expectedAction; }
+    public async Task ShowVisualAsync(ScreenFrame frame, Target target, CaptureSource source, CancellationToken cancellation)
+    {
+        target.Validate(frame.Geometry.Id);
+        var (nx, ny) = target.Bounds.Center; frame.RequireUnmaskedPoint(nx, ny);
+        var destination = frame.Geometry.Map(nx, ny);
+        supervisor.RequireObservation(source.ScopeId);
+        if (!tracker.IsCurrentGeometry(source, frame.Geometry) || !tracker.IsPointVisible(source, destination.X, destination.Y))
+            throw new SafetyException("Focus the browser window to see the guide marker.");
+        // This is a drawn guide icon only. It never reads or moves the physical cursor.
+        var start = frame.Geometry.Map(Math.Clamp(nx - .12, .02, .98), Math.Clamp(ny + .10, .02, .98));
+        try
+        {
+            int segments = ReducedMotion ? 1 : 24;
+            for (int i = 1; i <= segments; i++)
+            {
+                cancellation.ThrowIfCancellationRequested(); supervisor.RequireObservation(source.ScopeId);
+                if (!tracker.IsCurrentGeometry(source, frame.Geometry)) throw new SafetyException("Browser position changed. Check the screen again.");
+                var t = 1 - Math.Pow(1 - i / (double)segments, 3);
+                if (i < segments)
+                {
+                    TravelShown?.Invoke(((int)Math.Round(start.X + (destination.X - start.X) * t), (int)Math.Round(start.Y + (destination.Y - start.Y) * t)));
+                    await Task.Delay(16, cancellation);
+                }
+            }
+            cancellation.ThrowIfCancellationRequested(); supervisor.RequireObservation(source.ScopeId);
+            DisplayTarget(frame, target, source, destination);
+        }
+        catch { Hide(); throw; }
+    }
     public async Task PointAsync(ScreenFrame frame, Target target, CaptureSource source, CancellationToken cancellation)
     {
         target.Validate(frame.Geometry.Id);
@@ -43,7 +86,7 @@ public sealed class WindowsPointer(PermissionSupervisor supervisor, IWindowTrack
         activity.IsAssistantInputActive = true;
         try
         {
-            int segments = ReducedMotion ? 1 : 12;
+            int segments = ReducedMotion ? 1 : 24;
             for (int i = 1; i <= segments; i++)
             {
                 cancellation.ThrowIfCancellationRequested();
@@ -52,13 +95,41 @@ public sealed class WindowsPointer(PermissionSupervisor supervisor, IWindowTrack
                 int x = (int)Math.Round(start.X + (destination.X - start.X) * i / (double)segments);
                 int y = (int)Math.Round(start.Y + (destination.Y - start.Y) * i / (double)segments);
                 supervisor.GuideBatch(frame, tracker.IsForegroundAndVisible(source), () => InputNative.Move(x, y));
-                if (i < segments) await Task.Delay(12, cancellation);
+                if (i < segments) { TravelShown?.Invoke((x, y)); await Task.Delay(16, cancellation); }
             }
-            TargetShown?.Invoke(destination);
+            cancellation.ThrowIfCancellationRequested();
+            DisplayTarget(frame, target, source, destination);
         }
+        catch { Hide(); throw; }
         finally { activity.IsAssistantInputActive = false; }
     }
-    public void Hide() => TargetHidden?.Invoke();
+    private void DisplayTarget(ScreenFrame frame, Target target, CaptureSource source, (int X, int Y) destination)
+    {
+        lock (visibilityGate)
+        {
+            var epoch = supervisor.Epoch; var version = ++visibilityVersion;
+            SetBounds(frame, target); TargetShown?.Invoke(destination);
+            visibilityWatch?.Dispose();
+            visibilityWatch = new System.Threading.Timer(_ =>
+            {
+                lock (visibilityGate)
+                {
+                    // A queued callback belonging to an old target must not hide its replacement.
+                    if (version != visibilityVersion) return;
+                    try { if (supervisor.Epoch != epoch || !tracker.IsCurrentGeometry(source, frame.Geometry)) Hide(); }
+                    catch { Hide(); }
+                }
+            }, null, 100, 100);
+        }
+    }
+    public void Hide()
+    {
+        lock (visibilityGate)
+        {
+            visibilityVersion++; visibilityWatch?.Dispose(); visibilityWatch = null;
+            TargetBounds = null; TargetHidden?.Invoke();
+        }
+    }
 }
 
 public sealed class WindowsInputExecutor(PermissionSupervisor supervisor, IWindowTracker tracker,

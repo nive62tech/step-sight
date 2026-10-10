@@ -1,0 +1,16 @@
+# Using Desktop Guide
+
+Run the updated cloud pilot executable. An older extracted copy does not receive these changes automatically. The title bar identifies the cloud pilot; Preferences shows the build label.
+
+1. Run `artifacts/windows-companion-ui/DesktopGuide.App.exe`, or extract the updated pilot ZIP. Sign in with your invited email and permanent Desktop Guide password. AWS, GCP and Railway credentials are separate. A successful sign-in becomes visible immediately; a service outage offers a retry without hiding the signed-in account.
+2. Enter **Open Chrome and guide me through deploying my example on Railway. I will click and deploy.** Choose **Open browser & guide me**. The app opens a new installed browser window, binds that window and starts the live image analysis disclosed beside the button. No tab picker is required. Chrome is the default; name Edge or Firefox to request either. For sites other than Railway, include one HTTPS URL.
+3. To get help with an already open application, press **Ctrl + Alt + Space** while it is in front. The floating companion names the window. Describe the goal and choose **Help with this window**. Merely pressing the shortcut shares no images. If the shortcut is occupied, use the companion and optional existing-window selection in the main panel.
+4. The companion collapses to a small status dock and requests focus for your task window. Read the next instruction and act yourself. A drawn cursor travels to the grounded target, then shows a ring, target outline and comment such as **Click here**. This visual guide does **not** require physical mouse permission. Reduced motion removes travel and pulsing.
+5. The guide samples visible changes after your actions and checks the result. Expand the dock for **Show me where**, **Check screen**, a question, recording, Pause or a new task. If Windows refuses the foreground handoff, bring the task window forward yourself. Stale, masked, changed, covered or uncertain targets are withheld. Text questions currently use lesson context; **Check screen** requests fresh image analysis.
+6. Keep secrets and billing decisions under your control. Pause before entering sensitive information. Stop is always available on the dock, in the tray, and through **Ctrl + Alt + Shift + S** when registered. It cancels pending launch/sign-in work and ends capture. Resume requires fresh consent.
+
+The main panel retains an optional window/preview flow and privacy masks (`left,top,right,bottom`, normalized 0–1, separated with semicolons). There is no offline walkthrough. A cloud failure pauses guidance instead of presenting fabricated live steps. Closing the main panel leaves the companion/tray running; use **Exit** in the tray to quit.
+
+Railway instructions are chosen from the current screenshot, including workspace/capacity checks when relevant. You create resources and perform final deployment. No Railway project has been created or deployed by Codex. A loading build is not evidence of successful deployment.
+
+The pilot is unsigned. Gemini 3.1 Flash-Lite is active but remains a quality candidate (4/5 synthetic target cases, one binding failure). The native companion/overlay, full learner workflow, voice and accessibility gates remain open. See [the Windows companion plan](heyclicky-windows-plan.md).

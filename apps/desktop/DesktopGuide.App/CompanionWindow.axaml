@@ -1,0 +1,72 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="DesktopGuide.App.CompanionWindow" Title="Desktop Guide companion"
+        Width="276" Height="72" CanResize="False" ShowInTaskbar="False" Topmost="True"
+        ShowActivated="False" WindowDecorations="None" Background="Transparent"
+        TransparencyLevelHint="Transparent" FontFamily="Bahnschrift" FontSize="14" Classes.highcontrast="{Binding HighContrast}">
+  <Window.Styles>
+    <Style Selector="Border#CompanionFrame"><Setter Property="Background" Value="#F8F7F1" /><Setter Property="BorderBrush" Value="#BDCDBF" /></Style>
+    <Style Selector="Window.highcontrast"><Setter Property="RequestedThemeVariant" Value="Dark" /></Style>
+    <Style Selector="Window.highcontrast Border#CompanionFrame"><Setter Property="Background" Value="#101B16" /><Setter Property="BorderBrush" Value="White" /></Style>
+    <Style Selector="Window.highcontrast TextBlock"><Setter Property="Foreground" Value="White" /></Style>
+    <Style Selector="Window.highcontrast TextBox"><Setter Property="Background" Value="#182820" /><Setter Property="Foreground" Value="White" /><Setter Property="BorderBrush" Value="White" /></Style>
+    <Style Selector="Window.highcontrast Button"><Setter Property="Background" Value="#182820" /><Setter Property="Foreground" Value="White" /><Setter Property="BorderBrush" Value="White" /></Style>
+    <Style Selector="Window.highcontrast Border.notice"><Setter Property="Background" Value="#182820" /><Setter Property="BorderBrush" Value="White" /></Style>
+    <Style Selector="Window.highcontrast CheckBox"><Setter Property="Foreground" Value="White" /></Style>
+  </Window.Styles>
+  <Border x:Name="CompanionFrame" Margin="6" CornerRadius="19" BorderThickness="1" BoxShadow="0 3 16 0 #240B2B1D">
+    <Grid RowDefinitions="58,*">
+      <Grid ColumnDefinitions="*,Auto" Margin="6,0">
+        <Button x:Name="ToggleButton" Classes="quiet" Padding="10,4" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" AutomationProperties.Name="Open or collapse Desktop Guide">
+          <StackPanel Orientation="Horizontal" Spacing="11">
+            <Border Width="31" Height="33" CornerRadius="10" Background="#214C40" VerticalAlignment="Center">
+              <TextBlock Text="↖" FontSize="24" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <StackPanel VerticalAlignment="Center" Spacing="2">
+              <TextBlock Text="Desktop Guide" FontWeight="SemiBold" FontSize="13" />
+              <TextBlock Text="{Binding CompanionStatus}" FontSize="11" Classes="muted" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" MaxWidth="210" />
+            </StackPanel>
+          </StackPanel>
+        </Button>
+        <Button Grid.Column="1" Content="■" Classes="danger" Command="{Binding StopCommand}" Width="36" MinHeight="34" Padding="4" VerticalAlignment="Center" ToolTip.Tip="Stop and end observation" AutomationProperties.Name="Stop and end observation" />
+      </Grid>
+      <ScrollViewer x:Name="ExpandedBody" Grid.Row="1" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="20,4,20,18" Spacing="14">
+          <Border Height="1" Background="#DEE4D9" />
+          <StackPanel IsVisible="{Binding !HasLesson}" Spacing="12">
+            <TextBlock Text="A little help,&#10;right where you are." FontFamily="Georgia" FontSize="25" LineHeight="29" />
+            <TextBlock Text="{Binding PreparedWindowLabel}" FontSize="12" Classes="muted" MaxLines="2" TextTrimming="CharacterEllipsis" />
+            <TextBox x:Name="PromptBox" Text="{Binding Goal}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="100" MaxHeight="150" PlaceholderText="What would you like to do?" AutomationProperties.Name="What would you like help with?" />
+            <Button Classes="primary" Content="Help with this window" Command="{Binding HelpCurrentWindowCommand}" IsVisible="{Binding HasPreparedWindow}" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+            <Button Content="{Binding ContinueLabel}" Command="{Binding ContinueSetupCommand}" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+            <TextBlock Text="Starting shares live images of the named window—or the new browser—with Gemini via AWS. You click and type. Stop ends observation." Classes="muted" FontSize="11" LineHeight="16" />
+          </StackPanel>
+          <StackPanel IsVisible="{Binding HasLesson}" Spacing="12">
+            <TextBlock Text="{Binding Status}" Classes="accent" FontSize="12" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding Instruction}" FontFamily="Georgia" FontSize="23" LineHeight="29" />
+            <TextBlock Text="{Binding Explanation}" Classes="muted" FontSize="13" LineHeight="19" />
+            <TextBlock Text="{Binding SourceSummary}" Classes="muted" FontSize="11" MaxLines="1" TextTrimming="CharacterEllipsis" />
+            <WrapPanel Orientation="Horizontal">
+              <Button x:Name="ShowWhereButton" Content="Show me where" Classes="primary" IsEnabled="{Binding CanPoint}" Margin="0,0,8,8" />
+              <Button x:Name="CheckButton" Content="Check screen" IsEnabled="{Binding CanInteract}" Margin="0,0,0,8" />
+              <Button Content="Pause" Command="{Binding PauseCommand}" IsVisible="{Binding !IsPaused}" Margin="0,0,8,0" />
+              <Button Content="New task" Command="{Binding NewLessonCommand}" />
+            </WrapPanel>
+            <StackPanel IsVisible="{Binding IsPaused}" Spacing="8">
+              <CheckBox IsChecked="{Binding ResumeConsent}" Content="Allow a fresh image of this window" FontSize="12" />
+              <Button x:Name="ResumeButton" Content="Resume live guidance" Classes="primary" IsEnabled="{Binding ResumeConsent}" />
+            </StackPanel>
+            <TextBox Text="{Binding Question}" PlaceholderText="Ask about this step…" IsEnabled="{Binding CanInteract}" TextWrapping="Wrap" AutomationProperties.Name="Ask about this step" />
+            <WrapPanel>
+              <Button Content="Ask" Command="{Binding AskCommand}" IsEnabled="{Binding CanInteract}" Margin="0,0,8,0" />
+              <Button Content="{Binding RecordLabel}" Command="{Binding PushToTalkCommand}" IsEnabled="{Binding CanInteract}" />
+            </WrapPanel>
+            <TextBlock Text="{Binding ObservationSummary}" FontSize="11" Classes="accent" />
+          </StackPanel>
+          <Border Classes="notice" Padding="11" IsVisible="{Binding HasNotice}"><TextBlock Text="{Binding Notice}" FontSize="12" /></Border>
+          <Button x:Name="PanelButton" Content="Account &amp; preferences" Classes="quiet" HorizontalAlignment="Left" Padding="0,6" />
+          <TextBlock Text="{Binding CompanionHotkeyStatus}" FontSize="11" Classes="muted" />
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+  </Border>
+</Window>

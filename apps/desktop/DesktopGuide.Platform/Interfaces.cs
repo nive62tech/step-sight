@@ -3,10 +3,16 @@ using DesktopGuide.Core;
 namespace DesktopGuide.Platform;
 
 public sealed record CaptureSource(Guid ScopeId, Guid TargetId, string Label, string Kind);
+public interface ICompanionHotkey
+{
+    event Action? Invoked;
+    bool CompanionHotkeyRegistered { get; }
+}
 public interface IScreenCapture : IDisposable
 {
     IReadOnlyList<CaptureSource> ListSources();
     Task<ScreenFrame> CaptureAsync(CaptureSource source, IReadOnlyList<Bounds> masks, CancellationToken cancellation);
+    void StopCapture() { }
 }
 public interface IWindowTracker
 {
@@ -15,6 +21,8 @@ public interface IWindowTracker
     bool IsPointVisible(CaptureSource source, int x, int y);
     bool IsLocked { get; }
     bool HasMeaningfulChange(ScreenFrame before, ScreenFrame after);
+    bool IsGuidanceTargetCurrent(ScreenFrame before, ScreenFrame after, Target target)
+        => before.Geometry == after.Geometry && before.PixelDigest == after.PixelDigest;
 }
 public interface IUserActivityObserver : IDisposable
 {
@@ -30,7 +38,9 @@ public interface IUserActivityObserver : IDisposable
 }
 public interface IPointerGuide
 {
+    void SetHint(string instruction, string expectedAction) { }
     Task PointAsync(ScreenFrame frame, Target target, CaptureSource source, CancellationToken cancellation);
+    Task ShowVisualAsync(ScreenFrame frame, Target target, CaptureSource source, CancellationToken cancellation) => Task.CompletedTask;
     void Hide();
 }
 public interface IInputExecutor

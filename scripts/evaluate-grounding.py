@@ -82,7 +82,7 @@ async def evaluate(directory: Path, project: str, limit: int, budget: LiveBudget
     finally:
         await provider.close()
     report = {"synthetic_only": manifest["synthetic"], "sample_size": len(outcomes), "correct": sum(case["correct"] for case in outcomes), "outcomes": outcomes,
-              "real_application_qualification": "not established", "model": "gemini-3.8-flash", "location": "global"}
+              "real_application_qualification": "not established", "model": provider.settings.gemini_guidance_model, "location": provider.settings.gcp_location}
     report["requested_sample_size"] = limit
     report["estimated_reported_cost_usd"] = sum(case.get("estimated_usd", 0) for case in outcomes)
     n = len(outcomes)

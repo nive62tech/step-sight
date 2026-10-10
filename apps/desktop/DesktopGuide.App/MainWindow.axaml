@@ -1,64 +1,156 @@
 <Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="DesktopGuide.App.MainWindow"
-        Width="460" Height="820" MinWidth="380" MinHeight="480" Topmost="True" Background="#111B23" FontSize="{Binding TextSize}" Classes.highcontrast="{Binding HighContrast}">
+        Width="960" Height="820" MinWidth="420" MinHeight="600" Topmost="{Binding IsPinned}" FontSize="{Binding TextSize}" FontFamily="Bahnschrift"
+        Classes.highcontrast="{Binding HighContrast}" WindowStartupLocation="CenterScreen">
   <Window.Styles>
-    <Style Selector="Window.highcontrast"><Setter Property="Background" Value="Black" /></Style>
+    <Style Selector="Window.highcontrast"><Setter Property="RequestedThemeVariant" Value="Dark" /><Setter Property="Background" Value="#101B16" /><Setter Property="Foreground" Value="White" /></Style>
     <Style Selector="Window.highcontrast TextBlock"><Setter Property="Foreground" Value="White" /></Style>
-    <Style Selector="Window.highcontrast Button"><Setter Property="BorderBrush" Value="White" /><Setter Property="BorderThickness" Value="2" /></Style>
+    <Style Selector="Window.highcontrast Border.surface"><Setter Property="Background" Value="#182820" /><Setter Property="BorderBrush" Value="White" /></Style>
+    <Style Selector="Window.highcontrast Border.sidebar"><Setter Property="Background" Value="#101B16" /></Style>
+    <Style Selector="Window.highcontrast Border.header"><Setter Property="Background" Value="#101B16" /></Style>
+    <Style Selector="Window.highcontrast Border.footer"><Setter Property="Background" Value="#101B16" /></Style>
+    <Style Selector="Window.highcontrast Border.notice"><Setter Property="Background" Value="#182820" /><Setter Property="BorderBrush" Value="White" /></Style>
+    <Style Selector="Window.highcontrast TextBox"><Setter Property="Background" Value="#182820" /><Setter Property="Foreground" Value="White" /></Style>
+    <Style Selector="Window.highcontrast ComboBox"><Setter Property="Background" Value="#182820" /><Setter Property="Foreground" Value="White" /></Style>
+    <Style Selector="Window.highcontrast ListBoxItem"><Setter Property="Background" Value="#182820" /><Setter Property="Foreground" Value="White" /></Style>
+    <Style Selector="Window.highcontrast Button"><Setter Property="Background" Value="#182820" /><Setter Property="Foreground" Value="White" /><Setter Property="BorderBrush" Value="White" /></Style>
+    <Style Selector="Window.highcontrast Button.quiet"><Setter Property="Background" Value="Transparent" /></Style>
+    <Style Selector="Window.highcontrast Button.nav.selected"><Setter Property="Background" Value="#284637" /></Style>
+    <Style Selector="Window.highcontrast CheckBox"><Setter Property="Foreground" Value="White" /></Style>
+    <Style Selector="Window.highcontrast ComboBox"><Setter Property="BorderBrush" Value="White" /></Style>
+    <Style Selector="Window.highcontrast ListBoxItem:selected /template/ ContentPresenter"><Setter Property="Background" Value="#284637" /></Style>
   </Window.Styles>
-  <Grid RowDefinitions="Auto,*,Auto" Margin="20">
-    <StackPanel Spacing="8" Grid.Row="0" Margin="0,0,0,16">
-      <Grid ColumnDefinitions="*,Auto">
-        <StackPanel><TextBlock Text="{Binding BrandName}" FontSize="24" FontWeight="SemiBold" /><TextBlock Text="Your next step, in sight" Foreground="#A3B8C7" /></StackPanel>
-        <Button Grid.Column="1" Content="Stop" Command="{Binding StopCommand}" Background="#913D40" Foreground="White" AutomationProperties.Name="Emergency Stop lesson" />
+  <Grid RowDefinitions="Auto,*,Auto">
+    <Border Classes="header" Padding="22,16">
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+        <Border Background="#214C40" CornerRadius="10" Width="36" Height="36" Margin="0,0,12,0"><TextBlock Text="dg" FontFamily="Georgia" FontSize="23" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+        <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding BrandName}" FontSize="19" FontWeight="SemiBold" /><TextBlock Text="{Binding EnvironmentLabel}" Classes="muted" FontSize="11" /></StackPanel>
+        <TextBlock Grid.Column="2" Text="{Binding AccountShort}" Classes="muted" VerticalAlignment="Center" Margin="8,0,16,0" AutomationProperties.LiveSetting="Polite" />
+        <Button Grid.Column="3" Content="Stop" Classes="danger" Command="{Binding StopCommand}" AutomationProperties.Name="Emergency Stop lesson" />
       </Grid>
-      <TextBlock Text="{Binding EnvironmentLabel}" FontSize="12" Foreground="#F8C577" />
-      <TextBlock Text="{Binding Status}" Foreground="#9BE0CE" AutomationProperties.LiveSetting="Polite" />
-    </StackPanel>
-    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
-      <StackPanel Spacing="14">
-        <Border Background="#1B2B37" CornerRadius="12" Padding="16">
-          <StackPanel Spacing="10"><TextBlock Text="{Binding Instruction}" FontSize="21" FontWeight="SemiBold" /><TextBlock Text="{Binding Explanation}" Foreground="#C2D2DC" /></StackPanel>
+    </Border>
+    <Grid Grid.Row="1" ColumnDefinitions="190,*">
+      <Border x:Name="Sidebar" Classes="sidebar" Padding="20,28">
+        <Grid RowDefinitions="Auto,*,Auto">
+          <StackPanel Spacing="7">
+            <TextBlock Text="A little guidance." FontFamily="Georgia" FontSize="20" Margin="0,0,0,20" />
+            <Button Classes="nav" Content="New lesson" Command="{Binding NewLessonCommand}" Classes.selected="{Binding ShowSetup}" />
+            <Button Classes="nav" Content="Your next step" Command="{Binding OpenLessonCommand}" IsEnabled="{Binding HasLesson}" Classes.selected="{Binding ShowLesson}" />
+            <Button Classes="nav" Content="Preferences" Command="{Binding OpenSettingsCommand}" Classes.selected="{Binding ShowSettings}" />
+          </StackPanel>
+          <StackPanel Grid.Row="2" Spacing="10">
+            <Border Height="1" Background="#D5DCD2" Margin="0,0,0,8" />
+            <TextBlock Text="You set the pace." FontFamily="Georgia" FontSize="19" />
+            <TextBlock Text="One window. One step.&#10;You're always in control." Classes="muted" FontSize="12" />
+            <TextBlock Text="{Binding ConnectionStatus}" Classes="muted" FontSize="12" AutomationProperties.LiveSetting="Polite" />
+          </StackPanel>
+        </Grid>
+      </Border>
+      <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto" Margin="28,24,28,16">
+        <StackPanel Spacing="12">
+          <WrapPanel IsVisible="{Binding IsCompact}">
+            <Button Content="New lesson" Classes="quiet" Command="{Binding NewLessonCommand}" Margin="0,0,6,0" />
+            <Button Content="Your step" Classes="quiet" Command="{Binding OpenLessonCommand}" IsEnabled="{Binding HasLesson}" Margin="0,0,6,0" />
+            <Button Content="Preferences" Classes="quiet" Command="{Binding OpenSettingsCommand}" />
+          </WrapPanel>
+          <Border Classes="notice" IsVisible="{Binding HasNotice}" Padding="14,12" Margin="0,0,0,12">
+            <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{Binding Notice}" FontSize="13" AutomationProperties.LiveSetting="Assertive" /><Button Grid.Column="1" Content="Dismiss" Classes="quiet" Command="{Binding DismissNoticeCommand}" Margin="10,0,0,0" /></Grid>
+          </Border>
+        </StackPanel>
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="22" Margin="0,0,0,12">
+            <StackPanel Spacing="9">
+              <TextBlock Text="{Binding PageTitle}" Classes="title" />
+              <TextBlock Text="{Binding PageDescription}" Classes="muted" />
+              <TextBlock Text="{Binding SetupProgress}" IsVisible="{Binding ShowSetup}" FontSize="12" Classes="accent" Margin="0,7,0,0" />
+            </StackPanel>
+            <StackPanel IsVisible="{Binding ShowTask}" Spacing="20">
+              <Border Classes="surface" Padding="18" IsVisible="{Binding NeedsSignIn}">
+                <StackPanel Spacing="10">
+                  <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{Binding AccountTitle}" Classes="section" /><ProgressBar Grid.Column="1" Width="80" Height="3" IsIndeterminate="True" IsVisible="{Binding IsSigningIn}" VerticalAlignment="Center" /></Grid>
+                  <TextBlock Text="{Binding AccountDetail}" Classes="muted" FontSize="13" AutomationProperties.LiveSetting="Polite" />
+                  <WrapPanel IsVisible="{Binding NeedsSignIn}"><Button Content="Sign in" Classes="primary" Command="{Binding SignInCommand}" IsEnabled="{Binding CanSignIn}" /><Button Content="Cancel sign-in" Classes="quiet" Command="{Binding CancelSignInCommand}" IsVisible="{Binding IsSigningIn}" Margin="8,0,0,0" /></WrapPanel>
+                  <TextBlock Text="{Binding ConnectionStatus}" Classes="accent" FontSize="12" IsVisible="{Binding SignedIn}" />
+                  <CheckBox Content="Remember me on this Windows account" IsChecked="{Binding RememberMe}" IsVisible="{Binding NeedsSignIn}" FontSize="12" />
+                </StackPanel>
+              </Border>
+              <StackPanel Spacing="12">
+                <TextBlock Text="What would you like to do?" Classes="section" />
+                <TextBox Text="{Binding Goal}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="128" IsEnabled="{Binding !IsBusy}" PlaceholderText="Open Chrome and guide me through deploying my example on Railway…" AutomationProperties.Name="Learning goal" />
+                <TextBlock Text="Name Chrome, Edge or Firefox and your task. For another website, include its https:// address." Classes="muted" FontSize="12" />
+              </StackPanel>
+              <Border Classes="surface" Padding="18"><StackPanel Spacing="10">
+                <TextBlock Text="A guide that sees what you see." Classes="section" />
+                <TextBlock Text="I'll open a new browser window, analyse its live images, then show an animated cursor and a comment for your next step. After you act, I'll look again." Classes="muted" FontSize="13" />
+                <TextBlock Text="By choosing Open browser &amp; guide me, you allow that new window to be shared with the AWS service and Gemini for live guidance. All tabs in that window are in scope. Stop ends observation." FontSize="12" />
+                <TextBlock Text="You click, type and deploy. Your physical cursor stays under your control." Classes="accent" FontSize="12" />
+              </StackPanel></Border>
+            </StackPanel>
+            <StackPanel IsVisible="{Binding ShowWindow}" Spacing="18">
+              <Border Classes="surface" Padding="20">
+                <StackPanel Spacing="14">
+                  <TextBlock Text="Which window should I help with?" Classes="section" />
+                  <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}" HorizontalAlignment="Stretch" PlaceholderText="Select an open app or monitor" AutomationProperties.Name="Selected capture source">
+                    <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" MaxWidth="550" /></DataTemplate></ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <Button Content="Refresh open windows" Classes="quiet" Command="{Binding RefreshSourcesCommand}" />
+                  <CheckBox Content="Allow a local preview of this selected source" IsChecked="{Binding ObservationConsent}" />
+                  <TextBlock Text="The preview stays on your computer. Starting a lesson shares this source with the guide. All visible tabs within a selected browser window are in scope." Classes="muted" FontSize="12" />
+                </StackPanel>
+              </Border>
+              <Expander Header="Hide private areas (optional)">
+                <StackPanel Spacing="8" Margin="0,12,0,0"><TextBlock Text="Enter rectangles as left, top, right, bottom, using numbers between 0 and 1. Separate rectangles with a semicolon. Hidden areas are blacked out before sharing." Classes="muted" FontSize="12" /><TextBox Text="{Binding Masks}" PlaceholderText="Example: 0.0,0.0,0.3,0.2" AutomationProperties.Name="Normalized privacy masks" /></StackPanel>
+              </Expander>
+              <TextBlock Text="Open the app you want to learn in first. Choose its window above, then preview." Classes="muted" FontSize="12" />
+            </StackPanel>
+            <StackPanel IsVisible="{Binding ShowReview}" Spacing="18">
+              <Border Classes="surface" Padding="16">
+                <StackPanel Spacing="12"><TextBlock Text="{Binding SourceSummary}" FontSize="14" FontWeight="SemiBold" /><Border Background="#E9EDE4" CornerRadius="8" Padding="8"><Image Source="{Binding PreviewImage}" MaxHeight="245" Stretch="Uniform" AutomationProperties.Name="Exact capture preview" /></Border><TextBlock Text="Only this approved source is shared. Privacy masks are already applied." Classes="muted" FontSize="12" /></StackPanel>
+              </Border>
+              <CheckBox Content="I reviewed this preview and allow observation of its scope" IsChecked="{Binding PreviewAccepted}" />
+              <TextBlock Text="Your selected source is processed by the AWS backend and managed GCP model, with global processing allowed. This application doesn't save raw media; provider retention conditions apply." Classes="muted" FontSize="12" />
+              <Grid ColumnDefinitions="*,16,*"><StackPanel Spacing="8"><TextBlock Text="How should I help?" Classes="section" /><ComboBox ItemsSource="{Binding Modes}" SelectedIndex="{Binding SelectedMode}" HorizontalAlignment="Stretch" AutomationProperties.Name="Interaction mode" /></StackPanel><StackPanel Grid.Column="2" Spacing="8"><TextBlock Text="Explanation detail" Classes="section" /><ComboBox ItemsSource="{Binding DetailLevels}" SelectedItem="{Binding SelectedDetail}" HorizontalAlignment="Stretch" AutomationProperties.Name="Explanation detail" /></StackPanel></Grid>
+              <TextBlock Text="{Binding ModeHelp}" Classes="muted" FontSize="12" />
+              <StackPanel Spacing="6">
+                <CheckBox Content="Allow the guide to point with my cursor" IsChecked="{Binding PointerConsent}" IsVisible="{Binding ShowPointerPermission}" />
+                <CheckBox Content="Allow separately approved one-action demonstrations" IsChecked="{Binding DemonstrationConsent}" IsVisible="{Binding ShowDemoPermission}" />
+                <CheckBox Content="Save my lesson progress for 30 days" IsChecked="{Binding SaveProgress}" />
+              </StackPanel>
+              <TextBlock Text="{Binding StartHint}" Classes="accent" FontSize="12" />
+            </StackPanel>
+            <StackPanel IsVisible="{Binding ShowLesson}" Spacing="20">
+              <StackPanel Spacing="8"><TextBlock Text="{Binding LessonTitle}" Classes="accent" FontSize="13" /><TextBlock Text="{Binding Status}" Classes="section" AutomationProperties.LiveSetting="Polite" /></StackPanel>
+              <Border Classes="surface lesson" Padding="24">
+                <StackPanel Spacing="20"><TextBlock Text="{Binding Instruction}" FontFamily="Georgia" FontSize="27" LineHeight="35" /><Border Height="1" Background="#DDE3D8" /><TextBlock Text="{Binding Explanation}" LineHeight="24" Classes="muted" /></StackPanel>
+              </Border>
+              <StackPanel Spacing="14">
+                <WrapPanel><Button Content="I did this · check my screen" Classes="primary" Command="{Binding DidThisCommand}" IsEnabled="{Binding CanInteract}" Margin="0,0,8,8" /><Button Content="Show me where" Command="{Binding ShowWhereCommand}" IsEnabled="{Binding CanPoint}" Margin="0,0,8,8" /><Button Content="Explain more" Classes="quiet" Command="{Binding ExplainMoreCommand}" IsEnabled="{Binding CanInteract}" Margin="0,0,0,8" /></WrapPanel>
+                <TextBlock Text="Checking uses a fresh observation. Your report alone doesn't mark a step complete." Classes="muted" FontSize="12" />
+                <TextBlock Text="For pointer guidance, switch back to your selected app when prompted. The guide waits for you to put it in front." Classes="muted" FontSize="12" IsVisible="{Binding PointerConsent}" />
+                <Border Classes="surface" Padding="16"><StackPanel Spacing="10"><TextBlock Text="Something unclear?" Classes="section" /><TextBox Text="{Binding Question}" PlaceholderText="Ask about this step…" AutomationProperties.Name="Ask a lesson question" /><WrapPanel><Button Content="Ask my guide" Command="{Binding AskCommand}" IsEnabled="{Binding CanInteract}" Margin="0,0,8,0" /><Button Content="{Binding RecordLabel}" Classes="quiet" Command="{Binding PushToTalkCommand}" IsEnabled="{Binding CanInteract}" /></WrapPanel></StackPanel></Border>
+                <Expander Header="Review one demonstration" IsVisible="{Binding HasProposal}"><StackPanel Spacing="12" Margin="0,12,0,0"><TextBlock Text="{Binding ProposalSummary}" /><TextBlock Text="Each approval covers one exact action. Sensitive actions stay manual." Classes="muted" FontSize="12" /><Button Content="Review this action" Command="{Binding DemonstrationCommand}" /></StackPanel></Expander>
+                <Border Classes="notice" Padding="16" IsVisible="{Binding IsPaused}"><StackPanel Spacing="12"><TextBlock Text="Ready to continue?" Classes="section" /><TextBlock Text="{Binding SourceSummary}" FontSize="12" /><TextBlock Text="{Binding ModeHelp}" Classes="muted" FontSize="12" /><CheckBox Content="Allow a fresh observation with the same lesson permissions" IsChecked="{Binding ResumeConsent}" /><Button Content="Resume my lesson" Classes="primary" Command="{Binding ResumeCommand}" /></StackPanel></Border>
+                <WrapPanel><Button Content="Pause for privacy" Classes="quiet" Command="{Binding PauseCommand}" Margin="0,0,8,8" /><Button Content="Check screen again" Classes="quiet" Command="{Binding ReobserveCommand}" IsEnabled="{Binding CanInteract}" Margin="0,0,0,8" /></WrapPanel>
+                <TextBlock Text="{Binding ResponseTiming}" Classes="muted" FontSize="11" />
+              </StackPanel>
+            </StackPanel>
+            <StackPanel IsVisible="{Binding ShowSettings}" Spacing="20">
+              <Border Classes="surface" Padding="20"><StackPanel Spacing="12"><TextBlock Text="Your account" Classes="section" /><TextBlock Text="{Binding AccountTitle}" /><TextBlock Text="{Binding AccountDetail}" Classes="muted" FontSize="13" /><TextBlock Text="{Binding ConnectionStatus}" Classes="accent" FontSize="12" /><WrapPanel><Button Content="Sign in" Classes="primary" Command="{Binding SignInCommand}" IsVisible="{Binding NeedsSignIn}" IsEnabled="{Binding CanSignIn}" Margin="0,0,8,8" /><Button Content="Sign out" Command="{Binding SignOutCommand}" IsVisible="{Binding SignedIn}" Margin="0,0,8,8" /><Button Content="Retry connection" Classes="quiet" Command="{Binding CheckConnectionCommand}" IsVisible="{Binding SignedIn}" Margin="0,0,0,8" /></WrapPanel><CheckBox Content="Remember me using Windows secure storage" IsChecked="{Binding RememberMe}" /></StackPanel></Border>
+              <Border Classes="surface" Padding="20"><StackPanel Spacing="12"><TextBlock Text="A comfortable pace" Classes="section" /><CheckBox Content="Keep the guide on top" IsChecked="{Binding IsPinned}" /><CheckBox Content="Reduced pointer motion" IsChecked="{Binding ReducedMotion}" /><CheckBox Content="High contrast" IsChecked="{Binding HighContrast}" /><CheckBox Content="Optional narration with captions" IsChecked="{Binding Narration}" /><TextBlock Text="Reading text size" Classes="muted" FontSize="13" /><Slider Minimum="14" Maximum="22" Value="{Binding TextSize}" AutomationProperties.Name="Reading text size" /></StackPanel></Border>
+              <Border Classes="surface" Padding="20"><StackPanel Spacing="12"><TextBlock Text="Your progress" Classes="section" /><TextBlock Text="Remove local progress and the current cloud lesson. This stops the lesson first." Classes="muted" FontSize="13" /><Button Content="Delete current lesson and progress" Classes="quiet" Command="{Binding ForgetProgressCommand}" /></StackPanel></Border>
+              <TextBlock Text="{Binding BuildLabel}" Classes="muted" FontSize="11" />
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+        <Border Grid.Row="2" IsVisible="{Binding ShowSetup}" BorderBrush="#D5DCD2" BorderThickness="0,1,0,0" Padding="0,14,0,0">
+          <StackPanel Spacing="8">
+            <TextBlock IsVisible="{Binding ShowTask}" Text="Opens a new browser window and shares its live images with Gemini via AWS. You click and deploy. Stop ends observation." FontSize="12" Classes="muted" />
+            <WrapPanel IsVisible="{Binding ShowTask}"><Button Content="{Binding ContinueLabel}" Classes="primary" Command="{Binding ContinueSetupCommand}" IsEnabled="{Binding CanSignIn}" Margin="0,0,10,6" /><Button Content="Choose an existing window" Classes="quiet" Command="{Binding ChooseExistingWindowCommand}" IsEnabled="{Binding CanSignIn}" Margin="0,0,0,6" /></WrapPanel>
+            <WrapPanel IsVisible="{Binding ShowWindow}"><Button Content="Preview this window" Classes="primary" Command="{Binding PreviewCommand}" IsEnabled="{Binding CanPreview}" Margin="0,0,10,6" /><Button Content="Back" Classes="quiet" Command="{Binding BackSetupCommand}" Margin="0,0,0,6" /></WrapPanel>
+            <WrapPanel IsVisible="{Binding ShowReview}"><Button Content="Start my lesson" Classes="primary" Command="{Binding StartCommand}" IsEnabled="{Binding CanStart}" Margin="0,0,10,6" /><Button Content="Change window" Classes="quiet" Command="{Binding BackSetupCommand}" Margin="0,0,0,6" /></WrapPanel>
+          </StackPanel>
         </Border>
-        <WrapPanel><Button Content="Show me where" Command="{Binding ShowWhereCommand}" Margin="0,0,8,8" /><Button Content="Explain more" Command="{Binding ExplainMoreCommand}" Margin="0,0,8,8" /><Button Content="I did this" Command="{Binding DidThisCommand}" Margin="0,0,8,8" /><Button Content="Reobserve" Command="{Binding ReobserveCommand}" Margin="0,0,8,8" /></WrapPanel>
-        <TextBox Text="{Binding Question}" PlaceholderText="Why? What does this mean?" AutomationProperties.Name="Ask a lesson question" />
-        <WrapPanel><Button Content="Ask" Command="{Binding AskCommand}" Margin="0,0,8,0" /><Button Content="Push to talk" Command="{Binding PushToTalkCommand}" /><TextBlock Text="{Binding Recording, StringFormat='Recording: {0}'}" Margin="8" /></WrapPanel>
-        <Expander Header="Lesson and permissions" IsExpanded="True">
-          <StackPanel Spacing="10" Margin="0,12,0,0">
-            <TextBlock Text="Your selected screen is processed by the AWS backend and managed GCP model. Global processing is allowed. Raw media is not saved by this application; provider retention conditions still apply." FontSize="12" />
-            <TextBox Text="{Binding Goal}" PlaceholderText="What would you like to learn?" AutomationProperties.Name="Learning goal" />
-            <ComboBox ItemsSource="{Binding Lessons}" SelectedItem="{Binding SelectedLesson}" HorizontalAlignment="Stretch" AutomationProperties.Name="Lesson" />
-            <TextBlock Text="Explanation detail" /><ComboBox ItemsSource="{Binding DetailLevels}" SelectedItem="{Binding SelectedDetail}" HorizontalAlignment="Stretch" AutomationProperties.Name="Explanation detail" />
-            <ComboBox ItemsSource="{Binding Modes}" SelectedIndex="{Binding SelectedMode}" HorizontalAlignment="Stretch" AutomationProperties.Name="Interaction mode" />
-            <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}" HorizontalAlignment="Stretch" AutomationProperties.Name="Selected capture source"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" MaxWidth="350" /></DataTemplate></ComboBox.ItemTemplate></ComboBox>
-            <Button Content="Refresh sources" Command="{Binding RefreshSourcesCommand}" />
-            <CheckBox Content="Allow observation of this selected source" IsChecked="{Binding ObservationConsent}" />
-            <TextBox Text="{Binding Masks}" PlaceholderText="Optional masks: left,top,right,bottom;…" AutomationProperties.Name="Normalized privacy masks" />
-            <Button Content="Preview locally" Command="{Binding PreviewCommand}" />
-            <Image Source="{Binding PreviewImage}" MaxHeight="200" Stretch="Uniform" AutomationProperties.Name="Exact capture preview" />
-            <CheckBox Content="I reviewed this preview and accept its scope" IsChecked="{Binding PreviewAccepted}" />
-            <CheckBox Content="Allow visible pointer guidance" IsChecked="{Binding PointerConsent}" />
-            <CheckBox Content="Allow separately approved one-action demonstrations" IsChecked="{Binding DemonstrationConsent}" />
-            <CheckBox Content="Save lesson progress (30-day retention)" IsChecked="{Binding SaveProgress}" />
-            <Button Content="Start lesson" Command="{Binding StartCommand}" Background="#2C695D" />
-          </StackPanel>
-        </Expander>
-        <Expander Header="Demonstration"><StackPanel Spacing="10" Margin="0,12,0,0"><TextBlock Text="{Binding ProposalSummary}" /><TextBlock Text="Approval covers one exact action. Sensitive or risky actions remain manual." FontSize="12" /><Button Content="Review this action" Command="{Binding DemonstrationCommand}" /></StackPanel></Expander>
-        <Expander Header="Practice, account and preferences">
-          <StackPanel Spacing="10" Margin="0,12,0,0">
-            <WrapPanel><Button Content="Offline walkthrough" Command="{Binding OfflinePracticeCommand}" Margin="0,0,8,8" /><Button Content="Practice: next" Command="{Binding PracticeNextCommand}" Margin="0,0,8,8" /></WrapPanel>
-            <WrapPanel><Button Content="Sign in" Command="{Binding SignInCommand}" Margin="0,0,8,0" /><Button Content="Sign out" Command="{Binding SignOutCommand}" /></WrapPanel>
-            <CheckBox Content="Remember me using Windows secure storage" IsChecked="{Binding RememberMe}" />
-            <Button Content="Delete local progress and current cloud lesson" Command="{Binding ForgetProgressCommand}" />
-            <CheckBox Content="Optional narration with captions" IsChecked="{Binding Narration}" />
-            <CheckBox Content="Reduced pointer motion" IsChecked="{Binding ReducedMotion}" />
-            <CheckBox Content="High contrast appearance" IsChecked="{Binding HighContrast}" />
-            <TextBlock Text="Reading text size" /><Slider Minimum="14" Maximum="22" Value="{Binding TextSize}" AutomationProperties.Name="Reading text size" />
-            <TextBlock Text="{Binding BuildLabel}" FontSize="12" />
-            <TextBlock Text="{Binding ResponseTiming}" FontSize="12" />
-          </StackPanel>
-        </Expander>
-      </StackPanel>
-    </ScrollViewer>
-    <StackPanel Grid.Row="2" Spacing="8" Margin="0,12,0,0"><TextBlock Text="{Binding Notice}" Foreground="#F8C577" FontSize="12" /><Grid ColumnDefinitions="*,*"><Button Content="Pause / privacy" Command="{Binding PauseCommand}" Margin="0,0,8,0" /><Button Grid.Column="1" Content="Resume with fresh observation" Command="{Binding ResumeCommand}" /></Grid><TextBlock Text="{Binding HotkeyStatus}" FontSize="11" Foreground="#A3B8C7" /></StackPanel>
+      </Grid>
+    </Grid>
+    <Border Grid.Row="2" Classes="footer" Padding="22,12"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{Binding ObservationSummary}" FontSize="12" Classes="accent" /><TextBlock Grid.Column="1" Text="{Binding HotkeyStatus}" FontSize="11" Classes="muted" MaxWidth="250" TextAlignment="Right" /></Grid></Border>
   </Grid>
 </Window>

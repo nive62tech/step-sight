@@ -18,13 +18,17 @@ public sealed class ControllerTests
         public bool BlockTurn;
         public TaskCompletionSource<bool> TurnEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<bool> ContinueTurn = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public int PointerMoves, Dispatches, Turns;
+        public int PointerMoves, Dispatches, Turns, VisualMarkers, CaptureStops;
+        public void StopCapture() => CaptureStops++;
+        public Task ShowVisualAsync(ScreenFrame frame, Target target, CaptureSource source, CancellationToken cancellation)
+        { cancellation.ThrowIfCancellationRequested(); Permissions.RequireObservation(source.ScopeId); VisualMarkers++; return Task.CompletedTask; }
+        public bool Foreground = true;
         public Environment()
         {
             var geometry = new Geometry(Guid.NewGuid(), Source.ScopeId, new(0, 0, 800, 450), 800, 450, 96, "test", Source.TargetId, new(0, 0, 1, 1), new(0, 0, 1, 1));
             Frame = new(new(Guid.NewGuid(), DateTimeOffset.UtcNow, Source.ScopeId, geometry.Id, 800, 450, true), geometry, [1], "synthetic");
         }
-        public bool IsForegroundAndVisible(CaptureSource source) => true;
+        public bool IsForegroundAndVisible(CaptureSource source) => Foreground;
         public bool IsCurrentGeometry(CaptureSource source, Geometry geometry) => geometry == Frame.Geometry;
         public bool IsPointVisible(CaptureSource source, int x, int y) => true;
         public bool HasMeaningfulChange(ScreenFrame before, ScreenFrame after) => false;
@@ -90,6 +94,42 @@ public sealed class ControllerTests
         public void Stop() { }
         public void Dispose() { }
         public LessonController Controller() => new(this, this, this, this, this, this, this, this, this, Permissions);
+    }
+    [Fact]
+    public async Task VisualGuideDoesNotNeedOrGrantPhysicalInputAndStopReleasesCapture()
+    {
+        var env = new Environment(); using var controller = env.Controller();
+        await controller.PreviewAsync(env.Source);
+        await controller.StartAsync(env.Source, "Use the live screen", "browser", InteractionMode.Guide, false, false, false);
+        Assert.Equal(1, env.VisualMarkers); Assert.Equal(0, env.PointerMoves); Assert.Equal(0, env.Dispatches);
+        Assert.Throws<SafetyException>(() => env.Permissions.GuideBatch(env.Frame, true, () => throw new Exception("Should not dispatch")));
+        var stops = env.CaptureStops; controller.StopLocal(); Assert.True(env.CaptureStops > stops);
+        Assert.Throws<SafetyException>(() => env.Permissions.RequireObservation(env.Source.ScopeId));
+    }
+    [Fact]
+    public async Task PointingWaitsForTheLearnerToFocusTheSelectedWindow()
+    {
+        var env = new Environment(); using var controller = env.Controller();
+        await controller.PreviewAsync(env.Source);
+        await controller.StartAsync(env.Source, "Configure workspace", "sandbox", InteractionMode.Guide, true, false, false);
+        env.Foreground = false;
+        var waiting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        controller.Notice += text => { if (text.StartsWith("Switch back")) waiting.TrySetResult(); };
+        var pointing = controller.ShowWhereAsync(); await waiting.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Equal(1, env.PointerMoves); Assert.False(pointing.IsCompleted);
+        env.Foreground = true; await pointing;
+        Assert.Equal(2, env.PointerMoves); Assert.Equal(LessonState.WaitingForLearner, controller.State);
+    }
+    [Fact]
+    public async Task StopWhileWaitingForWindowFocusPreventsPointerMovement()
+    {
+        var env = new Environment(); using var controller = env.Controller();
+        await controller.PreviewAsync(env.Source);
+        await controller.StartAsync(env.Source, "Configure workspace", "sandbox", InteractionMode.Guide, true, false, false);
+        env.Foreground = false;
+        var pointing = controller.ShowWhereAsync(); Assert.False(pointing.IsCompleted);
+        controller.StopLocal(); env.Foreground = true; await pointing;
+        Assert.Equal(1, env.PointerMoves); Assert.Equal(LessonState.Stopped, controller.State);
     }
     [Fact]
     public async Task GuidedLessonQuestionsAndVerificationUseProductController()

@@ -9,6 +9,42 @@ namespace DesktopGuide.Tests;
 
 public sealed class LoopbackTests
 {
+    private static int FreePort()
+    {
+        var probe = new TcpListener(IPAddress.Loopback, 0); probe.Start();
+        var port = ((IPEndPoint)probe.LocalEndpoint).Port; probe.Stop(); return port;
+    }
+    [Fact]
+    public async Task UnrelatedBrowserRequestDoesNotConsumeSignIn()
+    {
+        var origin = $"http://127.0.0.1:{FreePort()}";
+        using var callback = new LoopbackCallback(new Uri(origin + "/callback/"));
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var http = new HttpClient();
+        var receive = callback.ReceiveCodeAsync("correct", deadline.Token);
+        using var favicon = await http.GetAsync(origin + "/favicon.ico", deadline.Token);
+        Assert.Equal(HttpStatusCode.BadRequest, favicon.StatusCode); Assert.False(receive.IsCompleted);
+        using var result = await http.GetAsync(origin + "/callback/?state=correct&code=synthetic-code", deadline.Token);
+        Assert.Equal(HttpStatusCode.OK, result.StatusCode); Assert.Equal("synthetic-code", await receive);
+    }
+    [Fact]
+    public async Task BrowserSuccessWaitsForDesktopVerification()
+    {
+        var origin = $"http://127.0.0.1:{FreePort()}";
+        using var callback = new LoopbackCallback(new Uri(origin + "/callback/"));
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var http = new HttpClient();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var verified = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var receive = callback.CompleteSignInAsync("correct", async (_, token) => { entered.SetResult(); await verified.Task.WaitAsync(token); }, deadline.Token);
+        var request = http.GetAsync(origin + "/callback/?state=correct&code=synthetic-code", deadline.Token);
+        await entered.Task.WaitAsync(deadline.Token); Assert.False(request.IsCompleted);
+        verified.SetResult();
+        using var result = await request; await receive;
+        Assert.Equal(HttpStatusCode.OK, result.StatusCode);
+        Assert.Contains("Your account is ready", await result.Content.ReadAsStringAsync(deadline.Token));
+        Assert.Contains("no-store", result.Headers.CacheControl!.ToString());
+    }
     [Theory]
     [InlineData("state=correct&code=synthetic-code", true)]
     [InlineData("state=wrong&code=synthetic-code", false)]

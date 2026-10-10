@@ -33,9 +33,9 @@ public sealed class CredentialTests
     {
         var handler = new Handler(false);
         using var login = new CognitoLogin(Config, new HttpClient(handler), "synthetic-refresh", Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".bin"));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => login.GetAccessAsync(CancellationToken.None));
+        await Assert.ThrowsAsync<SignInException>(() => login.GetAccessAsync(CancellationToken.None));
         Assert.False(login.SignedIn);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => login.GetAccessAsync(CancellationToken.None));
+        await Assert.ThrowsAsync<SignInException>(() => login.GetAccessAsync(CancellationToken.None));
         Assert.Equal(1, handler.Calls);
     }
     [Fact]
@@ -43,7 +43,7 @@ public sealed class CredentialTests
     {
         var handler = new Handler(true);
         using var login = new CognitoLogin(Config, new HttpClient(handler), null, Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".bin"));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => login.GetAccessAsync(CancellationToken.None));
+        await Assert.ThrowsAsync<SignInException>(() => login.GetAccessAsync(CancellationToken.None));
         Assert.Equal(0, handler.Calls);
     }
     [Fact]

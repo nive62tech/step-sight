@@ -17,6 +17,8 @@ public sealed partial class App : Application
     private ServiceProvider? services;
     private TrayIcon? tray;
     private OverlayWindow? overlay;
+    private HighlightWindow? highlight;
+    private CompanionWindow? companion;
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
     public override void OnFrameworkInitializationCompleted()
     {
@@ -27,6 +29,7 @@ public sealed partial class App : Application
             var registrations = new ServiceCollection();
             registrations.AddSingleton(config); registrations.AddSingleton<PermissionSupervisor>();
             registrations.AddSingleton<WindowsCapture>();
+            registrations.AddSingleton<IBrowserLauncher, WindowsBrowserLauncher>();
             registrations.AddSingleton<IScreenCapture>(s => s.GetRequiredService<WindowsCapture>());
             registrations.AddSingleton<IWindowTracker>(s => s.GetRequiredService<WindowsCapture>());
             registrations.AddSingleton<IUserActivityObserver, WindowsActivity>();
@@ -34,60 +37,135 @@ public sealed partial class App : Application
             registrations.AddSingleton<IInputExecutor, WindowsInputExecutor>();
             registrations.AddSingleton<IAudioCapture, WindowsAudioCapture>(); registrations.AddSingleton<ISpeechPlayback, WindowsSpeechPlayback>();
             registrations.AddSingleton<ILocalSessionStore, WindowsLocalStore>();
-            registrations.AddSingleton<CognitoLogin>(); registrations.AddSingleton<IGuidanceApiClient, GuidanceApiClient>();
+            registrations.AddSingleton<CognitoLogin>(); registrations.AddSingleton<ILoginSession>(s => s.GetRequiredService<CognitoLogin>());
+            registrations.AddSingleton<IAccountConnection, CloudConnection>(); registrations.AddSingleton<IGuidanceApiClient, GuidanceApiClient>();
             registrations.AddSingleton<LessonController>(); registrations.AddSingleton<MainViewModel>();
-            var renderPreview = Program.Arguments.Contains("--render-preview");
+            var browserAuthCheck = Program.Arguments.Contains("--browser-auth-check");
+            var renderPreview = Program.Arguments.Contains("--render-preview") || browserAuthCheck;
             if (renderPreview)
             {
                 var preview = new PreviewEnvironment();
+                registrations.AddSingleton<IBrowserLauncher, PreviewBrowserLauncher>();
                 registrations.AddSingleton<IScreenCapture>(preview); registrations.AddSingleton<IWindowTracker>(preview);
                 registrations.AddSingleton<IUserActivityObserver>(preview); registrations.AddSingleton<IInputExecutor>(preview);
                 registrations.AddSingleton<ILocalSessionStore>(preview); registrations.AddSingleton<IAudioCapture>(preview);
                 registrations.AddSingleton<ISpeechPlayback>(preview);
+                if (browserAuthCheck)
+                {
+                    if (config.AuthMode != "cognito") throw new InvalidOperationException("Browser auth check requires the live pilot configuration.");
+                    registrations.AddSingleton(s => new CognitoLogin(config, new HttpClient { Timeout = TimeSpan.FromSeconds(15) }, null,
+                        Path.GetFullPath(".local/browser-auth-token.bin"), uri =>
+                        {
+                            Directory.CreateDirectory(".local");
+                            File.WriteAllText(".local/browser-auth-request.json", System.Text.Json.JsonSerializer.Serialize(new { url = uri.AbsoluteUri }));
+                        }));
+                }
+                else
+                {
+                    registrations.AddSingleton<ILoginSession>(new PreviewLogin(UiCheck.Argument("--scene", "signed-out") != "signed-out", config.AuthMode == "mock"));
+                    registrations.AddSingleton<IAccountConnection, PreviewConnection>();
+                }
             }
             services = registrations.BuildServiceProvider();
             var vm = services.GetRequiredService<MainViewModel>();
+            var requestedLesson = UiCheck.Argument("--lesson", "");
+            if (vm.LessonChoices.FirstOrDefault(l => l.Id == requestedLesson) is { } initialLesson) vm.SelectedLessonChoice = initialLesson;
             var window = new MainWindow { DataContext = vm, Title = config.BrandName };
+            if (renderPreview && int.TryParse(UiCheck.Argument("--width", "960"), out var previewWidth)) window.Width = Math.Clamp(previewWidth, 420, 1400);
             desktop.MainWindow = window;
             if (renderPreview)
             {
-                window.Opened += (_, _) => DispatcherTimer.RunOnce(() =>
-                {
-                    Directory.CreateDirectory("artifacts");
-                    using var bitmap = new RenderTargetBitmap(new PixelSize(460, 820), new Vector(96, 96));
-                    bitmap.Render(window); bitmap.Save("artifacts/ui-preview.png", PngBitmapEncoderOptions.Default);
-                    desktop.Shutdown(); services.Dispose();
-                }, TimeSpan.FromMilliseconds(500));
+                window.Opened += async (_, _) => await UiCheck.RunAsync(window, vm, services.GetRequiredService<LessonController>(),
+                    services.GetRequiredService<CognitoLogin>(), desktop, services);
                 base.OnFrameworkInitializationCompleted(); return;
             }
-            overlay = new OverlayWindow();
+            overlay = new OverlayWindow(); highlight = new HighlightWindow();
+            companion = new CompanionWindow { DataContext = vm };
             var pointer = services.GetRequiredService<WindowsPointer>();
-            pointer.TargetShown += point => Dispatcher.UIThread.Post(() => overlay.ShowTarget(point));
-            pointer.TargetHidden += () => Dispatcher.UIThread.Post(() => overlay.Hide());
+            var controller = services.GetRequiredService<LessonController>();
+            var capture = services.GetRequiredService<WindowsCapture>();
+            var activity = services.GetRequiredService<IUserActivityObserver>();
+            void FocusTask(CaptureSource source)
+            {
+                companion.Collapse(); window.Hide();
+                if (!capture.FocusSource(source)) vm.Notice = "Bring your task window to the front to see the guide marker.";
+            }
+            void ShowPanel() { vm.OpenSettingsCommand.Execute(null); window.Show(); window.Activate(); }
+            vm.GuideStarting += FocusTask;
+            companion.ReturnToTask += () => { if (vm.SelectedSource is { } source && vm.HasLesson) FocusTask(source); };
+            companion.PanelRequested += ShowPanel;
+            companion.Opened += (_, _) =>
+            {
+                if (companion.TryGetPlatformHandle()?.Handle is { } handle)
+                {
+                    activity.IgnoreWindow(handle);
+                    if (!WindowStyles.ExcludeFromCapture(handle)) vm.Notice = "Keep the companion outside the window you share so it doesn't cover your task.";
+                }
+            };
+            if (activity is ICompanionHotkey hotkey)
+                hotkey.Invoked += () => Dispatcher.UIThread.Post(() =>
+                {
+                    // Resolving the foreground window does not capture pixels or grant observation.
+                    if (!vm.HasLesson && !vm.IsBusy) vm.PrepareCurrentWindow(capture.ForegroundSource());
+                    companion.Expand();
+                });
+            pointer.TravelShown += point =>
+            {
+                var epoch = controller.Permissions.Epoch;
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (vm.ObservationConsent && vm.SelectedMode != 2 && !pointer.ReducedMotion && epoch == controller.Permissions.Epoch && controller.State == LessonState.Pointing)
+                        overlay.ShowTravel(point);
+                });
+            };
+            pointer.TargetShown += point =>
+            {
+                var epoch = controller.Permissions.Epoch;
+                var instruction = pointer.Instruction; var action = pointer.ExpectedAction; var bounds = pointer.TargetBounds;
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (vm.ObservationConsent && vm.SelectedMode != 2 && epoch == controller.Permissions.Epoch && controller.State is LessonState.Pointing or LessonState.WaitingForLearner)
+                    {
+                        if (bounds is not null) highlight.ShowTarget(bounds);
+                        overlay.ShowTarget(point, instruction, action, pointer.ReducedMotion);
+                    }
+                });
+            };
+            pointer.TargetHidden += () => Dispatcher.UIThread.Post(() => { overlay.Hide(); highlight.Hide(); });
+            vm.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(MainViewModel.IsSigningIn) && !vm.IsSigningIn && vm.SignedIn && !vm.IsBusy)
+                    Dispatcher.UIThread.Post(() => { window.Show(); window.Activate(); });
+            };
             window.Opened += (_, _) =>
             {
+                companion.Show();
                 var handle = window.TryGetPlatformHandle()?.Handle ?? 0;
                 if (handle != 0)
                 {
                     services.GetRequiredService<IUserActivityObserver>().IgnoreWindow(handle);
-                    vm.Notice = WindowStyles.ExcludeFromCapture(handle)
-                        ? "Capture exclusion requested. Review your preview to verify it on this Windows build."
-                        : "Capture exclusion unavailable. Move the panel outside the selected source and check preview.";
+                    if (!WindowStyles.ExcludeFromCapture(handle))
+                        vm.Notice = "Keep this panel outside the window you share so it doesn't cover your task.";
                 }
             };
+            var exiting = false;
             var menu = new NativeMenu();
-            var stop = new NativeMenuItem("Stop lesson"); stop.Click += (_, _) => services.GetRequiredService<LessonController>().StopLocal();
-            var show = new NativeMenuItem("Show panel"); show.Click += (_, _) => { window.Show(); window.Activate(); };
-            var exit = new NativeMenuItem("Exit"); exit.Click += (_, _) => { vm.StopCommand.Execute(null); desktop.Shutdown(); };
-            menu.Items.Add(show); menu.Items.Add(stop); menu.Items.Add(exit);
+            var stop = new NativeMenuItem("Stop lesson"); stop.Click += (_, _) => vm.StopCommand.Execute(null);
+            var show = new NativeMenuItem("Open companion"); show.Click += (_, _) => companion.Expand();
+            var settings = new NativeMenuItem("Account & preferences"); settings.Click += (_, _) => ShowPanel();
+            var exit = new NativeMenuItem("Exit"); exit.Click += (_, _) => { exiting = true; vm.StopCommand.Execute(null); desktop.Shutdown(); };
+            menu.Items.Add(show); menu.Items.Add(settings); menu.Items.Add(stop); menu.Items.Add(exit);
             using var iconBitmap = new RenderTargetBitmap(new PixelSize(32, 32), new Vector(96, 96));
-            var icon = new Border { Width = 32, Height = 32, Background = Avalonia.Media.Brushes.Teal,
-                Child = new TextBlock { Text = "S", FontSize = 24, Foreground = Avalonia.Media.Brushes.White,
+            var icon = new Border { Width = 32, Height = 32, Background = Avalonia.Media.Brush.Parse("#214C40"), CornerRadius = new(8),
+                Child = new TextBlock { Text = "dg", FontFamily = "Georgia", FontSize = 21, Foreground = Avalonia.Media.Brushes.White,
                     HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center } };
             icon.Measure(new Size(32, 32)); icon.Arrange(new Rect(0, 0, 32, 32)); iconBitmap.Render(icon);
             using var iconStream = new MemoryStream(); iconBitmap.Save(iconStream, PngBitmapEncoderOptions.Default); iconStream.Position = 0;
-            tray = new TrayIcon { Icon = new WindowIcon(iconStream), ToolTipText = config.BrandName + " — Stop available", Menu = menu, IsVisible = true };
-            desktop.Exit += (_, _) => { vm.StopCommand.Execute(null); overlay.Close(); tray.Dispose(); services.Dispose(); };
+            tray = new TrayIcon { Icon = new WindowIcon(iconStream), ToolTipText = config.BrandName + " · Stop available", Menu = menu, IsVisible = true };
+            window.Closing += (_, e) => { if (!exiting) { e.Cancel = true; window.Hide(); } };
+            companion.Closing += (_, e) => { if (!exiting) { e.Cancel = true; companion.Collapse(); } };
+            desktop.ShutdownRequested += (_, _) => exiting = true;
+            desktop.Exit += (_, _) => { exiting = true; vm.StopCommand.Execute(null); overlay.Close(); highlight.Close(); companion.Close(); tray.Dispose(); services.Dispose(); };
         }
         base.OnFrameworkInitializationCompleted();
     }
