@@ -1,0 +1,14 @@
+{
+  "id": "00000008-1111-4111-8111-111111111111",
+  "source_observation_id": "00000002-1111-4111-8111-111111111111",
+  "geometry_id": "00000003-1111-4111-8111-111111111111",
+  "action": {
+    "kind": "click",
+    "x": 0.75,
+    "y": 0.15,
+    "button": "left"
+  },
+  "effect": "Open practice Settings",
+  "risk": "low",
+  "provider_confirmation_required": false
+}

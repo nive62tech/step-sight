@@ -1,0 +1,9 @@
+{
+  "id": "vscode", "title": "Edit and save a practice file in VS Code", "version": "1.0.0",
+  "qualification": "unqualified", "last_verified": null,
+  "prerequisites": ["VS Code installed", "A disposable practice folder/file"],
+  "milestones": ["Open the practice folder", "Open and edit the practice text file", "Save and verify the dirty indicator clears"],
+  "common_mistakes": ["Focus may be in Search rather than the editor", "An unrelated notification does not confirm saving"],
+  "risk_boundaries": ["No automatic terminal commands", "Workspace trust decisions and extension installation are manual"],
+  "sources": ["https://code.visualstudio.com/docs/editing/codebasics"], "supported_build": "not yet qualified"
+}

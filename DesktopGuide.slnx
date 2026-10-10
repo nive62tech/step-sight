@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/apps/" />
+  <Folder Name="/apps/desktop/">
+    <Project Path="apps/desktop/DesktopGuide.App/DesktopGuide.App.csproj" />
+    <Project Path="apps/desktop/DesktopGuide.AppTests/DesktopGuide.AppTests.csproj" />
+    <Project Path="apps/desktop/DesktopGuide.Core/DesktopGuide.Core.csproj" />
+    <Project Path="apps/desktop/DesktopGuide.Platform/DesktopGuide.Platform.csproj" />
+    <Project Path="apps/desktop/DesktopGuide.Tests/DesktopGuide.Tests.csproj" />
+    <Project Path="apps/desktop/DesktopGuide.Windows/DesktopGuide.Windows.csproj" />
+    <Project Path="apps/desktop/DesktopGuide.WindowsSmoke/DesktopGuide.WindowsSmoke.csproj" />
+  </Folder>
+</Solution>

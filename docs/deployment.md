@@ -1,0 +1,49 @@
+# Deployment and costs
+
+Updated 11 October 2026. **The user approved deployment and bounded synthetic validation; the development pilot is deployed.** Cloud resources are active and may incur charges. Full learner/release acceptance remains in `docs/acceptance.md`.
+
+## Active inventory
+
+- AWS account `214422569127`, profile `personal`, explicit `ap-south-1`. New VPC, encrypted 30GB gp3, `t3a.small` instance `i-09b7452f878f98708`, runtime IAM/SSM, Cognito, private S3, seven-day logs, CPU/status alarms and $25 AWS budget.
+- API `https://d1gnr0x6ly7io1.cloudfront.net`, distribution `E2C4LEOAFIOH87`, private VPC origin `vo_1xf9Cnp0ecNG4TqO7psN3K`. Only the service-managed origin security group has inbound port 80. Bootstrap prefix-list ingress was removed. No SSH or database host port.
+- Cognito pool `ap-south-1_qU4Y8lMnm`, public client `3var8jd5gj9ls3l2rlqa3ket1j`, domain `https://dg-pilot-214422569127.auth.ap-south-1.amazoncognito.com`, callback `http://localhost:43827/callback/`, scope `desktop-guide/lessons`.
+- State bucket `dg-pilot-tfstate-214422569127` with separate `aws/bootstrap.tfstate`, `aws/pilot.tfstate`, `gcp/inference.tfstate` keys and S3 lockfiles. Private, encrypted, versioned and TLS-only. Never commit state/backend files/plans.
+- Data bucket `dg-pilot-data-214422569127`: private encrypted releases, metadata backups and independent deletion records. Backups expire after 14 days plus version lifecycle; deletion records after 30 days.
+- GCP project creation hit project quota. The user explicitly approved pilot resources in existing `gen-lang-client-0644821693` (number `112365687510`, existing billing account `01ED8F-CD9E7C-454F36`). `create_project=false` reads the project; lifecycle and billing remain unmanaged. Dedicated inference service account/role and pool `desktop-guide-aws`/provider `ec2-runtime` restrict federation to AWS role `dg-pilot-runtime` in the approved account. No service-account key.
+- Terraform manages 5 bootstrap, 30 hardened AWS pilot and 11 GCP resource entries; five GCP API entries reuse already-enabled services with `disable_on_destroy=false`. One generated SecureString `/desktop-guide/pilot/database-password` is provisioned outside Terraform to keep its value out of state. Runtime reads only that exact parameter.
+
+AWS and GCP final drift checks reported no changes. Important state/data/project/instance resources retain destroy guards. Existing unrelated AWS resources were not reused or changed. The GCP scope change was explicitly authorized.
+
+## Running release and evidence
+
+API image `desktop-guide-api:pilot-20261011-r3` was exported, SHA256-verified and loaded over SSM. Release archives/hashes are under the dedicated bucket's `releases/` prefix. Local image manifest digest: `sha256:9d4925527425aec1554e309603f24f7897be6ff25684eeeaf3b4f5c33db8be77`; classic Docker's loaded image identifier can differ from the manifest-list identifier. Archive hashes establish the deployed payload.
+
+Docker Compose v5.4.0 is pinned and its official release SHA256 was verified. Nginx/PostgreSQL images are pinned to digests. API is nonroot/read-only with tmpfs and no Linux capabilities; database has no public port. IMDSv2 is required, hop limit 2, with API address `172.28.0.10` alone admitted by the Docker metadata firewall. Its systemd service reapplies after Docker starts. A separate container's actual IMDSv2 PUT was rejected; API federation and forced refresh passed. Reboot/natural-expiry races remain qualification work.
+
+HTTPS readiness, anonymous/invalid-token rejection, HTTP rejection and direct-origin denial passed. Actual Hosted UI HTTP PKCE/refresh, access-vs-ID token validation, owner isolation and S3 deletion ledger passed using temporary synthetic users with email suppressed; those users were removed. Live synthetic Gemini image/schema/grounding passed, then 20/20 held-out synthetic targets with current-evidence bindings passed. This is not real-workflow qualification. S3's encrypted backup was restored to a new local PostgreSQL database with independent deletion reconciliation; recovery objectives are unmeasured.
+
+Public desktop configuration and self-contained development ZIP are in `artifacts/DesktopGuide-windows-x64-pilot.zip`. It is unsigned. Human Cognito invitations require an explicitly supplied recipient; no real invitation has been sent automatically.
+
+## Cost envelope
+
+Combined target **$50/month**: AWS $25, AI $20, contingency $5. This is not a hard billing cap. Resources are running. Verified Mumbai quotes: Linux `t3a.small` $0.0123/hour (~$8.98/730h), gp3 $0.0912/GB-month (~$2.74/30GB), public IPv4 $0.005/hour (~$3.65). Fixed subtotal is about $15.36/month before logs, backups, requests, transfer and taxes. Low-traffic AWS allowance is roughly $19–25/month; existing account workloads/free allowances may affect the bill. No NAT gateway, ALB, unlimited CPU credits or provisioned model throughput.
+
+See [EC2/EBS pricing](https://aws.amazon.com/ec2/pricing/on-demand/) and [IPv4 pricing](https://aws.amazon.com/vpc/pricing/). AWS budget is account-wide and has no notification destination configured. CPU/status alarms are console-only. Select an operator destination before unattended operation.
+
+Application inference uses conservative $1.50/M input and $7.50/M output estimates including thinking. Every attempt reserves $0.08; missing usage/unknown results retain it. Global/user monthly allowances are $20/$4. Synthetic validation separately uses a shared $1 ledger. The provider probe plus 20-case evaluation reported about $0.214 at conservative rates; two failed local-schema attempts retained $0.16 in reservations. The deployed image-turn check retains its own conservative reservation. Actual invoice charges may differ. Neither application estimates nor cloud budgets guarantee provider billing cutoffs.
+
+## Repeatable deployment path
+
+1. Confirm the intended scope and inspect changes. Existing approval covers this isolated pilot, not unrelated resource changes, custom DNS, destruction or a wider rollout. Run tests/infra validation and use explicit AWS profile/region.
+2. Initialize repository Terraform roots with ignored backend files pointing to the encrypted state bucket and distinct keys. Do not apply read-only preview copies. Set `bootstrap_cloudfront_ingress=false` for the existing pilot, and `project_id="gen-lang-client-0644821693"`, `create_project=false` for GCP. Review every create/update/replacement/deletion.
+3. Google ADC lacked deployment permissions in this session. Terraform used the connected active CLI identity by assigning `gcloud auth print-access-token --quiet` to `GOOGLE_OAUTH_ACCESS_TOKEN` in the process environment, then removing it in `finally`. Never print, persist or commit the token. Use authorized credentials for the selected project; do not enable APIs/change billing in an unapproved quota project.
+4. Build an immutable API release, record/archive its hash, and upload to dedicated `releases/`. Export the nonsecret `external_account_config` federation descriptor. Stage compose/nginx/runtime/firewall/backup scripts and systemd units over SSM; `scripts/invoke-pilot-command.ps1` validates the account/target and accepts structured command files.
+5. Keep the production password in the exact SSM SecureString; retrieve it on the host without printing it. Create owner-only `.env` with production/Cognito/Gemini, private PostgreSQL URL, selected GCP/global/model, deletion bucket and allowance settings. Desktop configuration contains public identifiers only.
+6. Use `scripts/install-runtime.sh`: verify pinned Compose, start DB, install metadata firewall/timer, run Alembic, then API/proxy. Preserve existing DB credentials on updates. Never print expanded `docker compose config` or environment files.
+7. Run bounded deployed auth/model/ownership/origin/metadata checks and backup reconciliation. Native tests require separately authorized disposable input scope; this session's one-click approval has already been used. Complete real workflow/release gates before learner rollout.
+
+## Custom hostname and TLS
+
+The chosen default CloudFront hostname has a valid certificate and HTTPS-only access. AWS fixes its default certificate's security policy to TLSv1 regardless of the configured minimum; it cannot enforce a TLS 1.2 minimum at the edge. See [AWS ViewerCertificate documentation](https://docs.aws.amazon.com/cloudfront/latest/APIReference/API_ViewerCertificate.html). Modern clients can negotiate modern TLS, but this does not establish a stricter edge minimum.
+
+For wider learner deployment, obtain an approved hostname/DNS control and ACM certificate in `us-east-1`, set `custom_domain`/`acm_certificate_arn`, review the plan and DNS record, then test the enforced TLS policy/auth/cache/origin path. No custom DNS/certificate change has been made. Teardown also needs a deliberate reviewed operation; stopping EC2 alone does not remove storage/IP/S3 costs.

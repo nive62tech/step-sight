@@ -1,0 +1,9 @@
+{
+  "id": "railway", "title": "Understand a disposable Railway deployment", "version": "1.0.0",
+  "qualification": "experimental", "last_verified": null,
+  "prerequisites": ["Railway account managed by the learner", "Disposable project/repository", "Learner checks billing and deployment cost"],
+  "milestones": ["Inspect prerequisites and select the intended disposable repository", "Review configuration without revealing secrets", "Learner deploys manually and observes explicit deployment evidence"],
+  "common_mistakes": ["UI may differ from documentation", "A build starting is not deployment success"],
+  "risk_boundaries": ["Sign-in, secrets, billing and resource creation are manual", "Final deploy/publish is manual", "Never fabricate successful deployment"],
+  "sources": ["https://docs.railway.com/quick-start", "https://docs.railway.com/deployments"], "supported_build": "not yet qualified"
+}

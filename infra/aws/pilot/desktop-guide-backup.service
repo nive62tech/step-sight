@@ -1,0 +1,10 @@
+[Unit]
+Description=Desktop Guide encrypted PostgreSQL backup
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+Environment=BACKUP_BUCKET=dg-pilot-data-214422569127
+ExecStart=/opt/desktop-guide/backup-database.sh
+UMask=0077

@@ -1,0 +1,81 @@
+{
+  "$defs": {
+    "Mode": {
+      "enum": [
+        "guide",
+        "demonstrate",
+        "practice"
+      ],
+      "title": "Mode",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "device_id": {
+      "format": "uuid",
+      "title": "Device Id",
+      "type": "string"
+    },
+    "goal": {
+      "maxLength": 1000,
+      "minLength": 1,
+      "title": "Goal",
+      "type": "string"
+    },
+    "mode": {
+      "$ref": "#/$defs/Mode",
+      "default": "guide"
+    },
+    "language": {
+      "default": "en",
+      "enum": [
+        "en",
+        "ml"
+      ],
+      "title": "Language",
+      "type": "string"
+    },
+    "detail_level": {
+      "default": "standard",
+      "enum": [
+        "brief",
+        "standard",
+        "detailed"
+      ],
+      "title": "Detail Level",
+      "type": "string"
+    },
+    "scope_id": {
+      "format": "uuid",
+      "title": "Scope Id",
+      "type": "string"
+    },
+    "save_progress": {
+      "default": false,
+      "title": "Save Progress",
+      "type": "boolean"
+    },
+    "lesson_id": {
+      "default": "sandbox",
+      "pattern": "^[a-z0-9-]{1,40}$",
+      "title": "Lesson Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "device_id",
+    "goal",
+    "scope_id"
+  ],
+  "title": "SessionCreate",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://desktop-guide.invalid/contracts/v1/SessionCreate.schema.json"
+}

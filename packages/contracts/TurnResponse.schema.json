@@ -1,0 +1,571 @@
+{
+  "$defs": {
+    "ActionProposal": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "source_observation_id": {
+          "format": "uuid",
+          "title": "Source Observation Id",
+          "type": "string"
+        },
+        "geometry_id": {
+          "format": "uuid",
+          "title": "Geometry Id",
+          "type": "string"
+        },
+        "action": {
+          "discriminator": {
+            "mapping": {
+              "click": "#/$defs/ClickAction",
+              "key_chord": "#/$defs/KeyAction",
+              "scroll": "#/$defs/ScrollAction",
+              "type": "#/$defs/TypeAction"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ClickAction"
+            },
+            {
+              "$ref": "#/$defs/ScrollAction"
+            },
+            {
+              "$ref": "#/$defs/TypeAction"
+            },
+            {
+              "$ref": "#/$defs/KeyAction"
+            }
+          ],
+          "title": "Action"
+        },
+        "effect": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Effect",
+          "type": "string"
+        },
+        "risk": {
+          "enum": [
+            "low",
+            "manual"
+          ],
+          "title": "Risk",
+          "type": "string"
+        },
+        "provider_confirmation_required": {
+          "default": false,
+          "title": "Provider Confirmation Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "source_observation_id",
+        "geometry_id",
+        "action",
+        "effect",
+        "risk"
+      ],
+      "title": "ActionProposal",
+      "type": "object"
+    },
+    "Bounds": {
+      "additionalProperties": false,
+      "properties": {
+        "left": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Left",
+          "type": "number"
+        },
+        "top": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Top",
+          "type": "number"
+        },
+        "right": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Right",
+          "type": "number"
+        },
+        "bottom": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Bottom",
+          "type": "number"
+        }
+      },
+      "required": [
+        "left",
+        "top",
+        "right",
+        "bottom"
+      ],
+      "title": "Bounds",
+      "type": "object"
+    },
+    "ClickAction": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "click",
+          "title": "Kind",
+          "type": "string"
+        },
+        "x": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Y",
+          "type": "number"
+        },
+        "button": {
+          "const": "left",
+          "default": "left",
+          "title": "Button",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "x",
+        "y"
+      ],
+      "title": "ClickAction",
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "observation_id": {
+          "format": "uuid",
+          "title": "Observation Id",
+          "type": "string"
+        },
+        "detail": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        }
+      },
+      "required": [
+        "observation_id",
+        "detail"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "GuidanceStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "source_observation_id": {
+          "format": "uuid",
+          "title": "Source Observation Id",
+          "type": "string"
+        },
+        "instruction": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Instruction",
+          "type": "string"
+        },
+        "explanation": {
+          "maxLength": 1500,
+          "title": "Explanation",
+          "type": "string"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Target"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "expected_user_action": {
+          "enum": [
+            "click",
+            "type",
+            "scroll",
+            "key_chord",
+            "manual",
+            "wait"
+          ],
+          "title": "Expected User Action",
+          "type": "string"
+        },
+        "postconditions": {
+          "items": {
+            "$ref": "#/$defs/Postcondition"
+          },
+          "maxItems": 5,
+          "minItems": 1,
+          "title": "Postconditions",
+          "type": "array"
+        },
+        "hints": {
+          "items": {
+            "maxLength": 500,
+            "type": "string"
+          },
+          "maxItems": 5,
+          "title": "Hints",
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "maxItems": 5,
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "uncertainty": {
+          "items": {
+            "maxLength": 500,
+            "type": "string"
+          },
+          "maxItems": 5,
+          "title": "Uncertainty",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "source_observation_id",
+        "instruction",
+        "explanation",
+        "expected_user_action",
+        "postconditions",
+        "evidence"
+      ],
+      "title": "GuidanceStep",
+      "type": "object"
+    },
+    "KeyAction": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "key_chord",
+          "title": "Kind",
+          "type": "string"
+        },
+        "chord": {
+          "enum": [
+            "Ctrl+A",
+            "Ctrl+C",
+            "Ctrl+S",
+            "Escape",
+            "Tab"
+          ],
+          "title": "Chord",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "chord"
+      ],
+      "title": "KeyAction",
+      "type": "object"
+    },
+    "Postcondition": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "visible_text",
+            "visible_state"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "title": "Postcondition",
+      "type": "object"
+    },
+    "ScrollAction": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "scroll",
+          "title": "Kind",
+          "type": "string"
+        },
+        "x": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Y",
+          "type": "number"
+        },
+        "ticks": {
+          "maximum": 3,
+          "minimum": -3,
+          "title": "Ticks",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "x",
+        "y",
+        "ticks"
+      ],
+      "title": "ScrollAction",
+      "type": "object"
+    },
+    "Target": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "rectangle",
+          "default": "rectangle",
+          "title": "Kind",
+          "type": "string"
+        },
+        "coordinate_space": {
+          "const": "normalized_source_image",
+          "default": "normalized_source_image",
+          "title": "Coordinate Space",
+          "type": "string"
+        },
+        "geometry_id": {
+          "format": "uuid",
+          "title": "Geometry Id",
+          "type": "string"
+        },
+        "bounds": {
+          "$ref": "#/$defs/Bounds"
+        },
+        "visible_label": {
+          "maxLength": 200,
+          "title": "Visible Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "geometry_id",
+        "bounds",
+        "visible_label"
+      ],
+      "title": "Target",
+      "type": "object"
+    },
+    "TypeAction": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "type",
+          "title": "Kind",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "text"
+      ],
+      "title": "TypeAction",
+      "type": "object"
+    },
+    "VerificationResult": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/VerificationStatus"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "maxItems": 5,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "unmet_postconditions": {
+          "items": {
+            "maxLength": 500,
+            "type": "string"
+          },
+          "maxItems": 5,
+          "title": "Unmet Postconditions",
+          "type": "array"
+        },
+        "recovery_suggestion": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recovery Suggestion"
+        },
+        "provenance": {
+          "enum": [
+            "mock",
+            "gemini",
+            "deterministic"
+          ],
+          "title": "Provenance",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "provenance"
+      ],
+      "title": "VerificationResult",
+      "type": "object"
+    },
+    "VerificationStatus": {
+      "enum": [
+        "CONFIRMED",
+        "NOT_YET",
+        "DIFFERENT_STATE",
+        "UNCERTAIN"
+      ],
+      "title": "VerificationStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "step": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/GuidanceStep"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "verification": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/VerificationResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "action_proposal": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ActionProposal"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "completed": {
+      "default": false,
+      "title": "Completed",
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "session_id": {
+      "format": "uuid",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "session_version": {
+      "title": "Session Version",
+      "type": "integer"
+    },
+    "turn_id": {
+      "format": "uuid",
+      "title": "Turn Id",
+      "type": "string"
+    },
+    "observation_id": {
+      "format": "uuid",
+      "title": "Observation Id",
+      "type": "string"
+    },
+    "provider": {
+      "enum": [
+        "mock",
+        "gemini"
+      ],
+      "title": "Provider",
+      "type": "string"
+    },
+    "timings_ms": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Timings Ms",
+      "type": "object"
+    }
+  },
+  "required": [
+    "step",
+    "session_id",
+    "session_version",
+    "turn_id",
+    "observation_id",
+    "provider"
+  ],
+  "title": "TurnResponse",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://desktop-guide.invalid/contracts/v1/TurnResponse.schema.json"
+}

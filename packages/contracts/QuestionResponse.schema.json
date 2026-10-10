@@ -1,0 +1,27 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "answer": {
+      "maxLength": 3000,
+      "minLength": 1,
+      "title": "Answer",
+      "type": "string"
+    },
+    "provider": {
+      "enum": [
+        "mock",
+        "gemini"
+      ],
+      "title": "Provider",
+      "type": "string"
+    }
+  },
+  "required": [
+    "answer",
+    "provider"
+  ],
+  "title": "QuestionResponse",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://desktop-guide.invalid/contracts/v1/QuestionResponse.schema.json"
+}

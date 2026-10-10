@@ -1,0 +1,7 @@
+aws_account_id              = "214422569127"
+region                      = "ap-south-1"
+instance_type               = "t3a.small"
+bootstrap_cloudfront_ingress = true
+budget_alert_email          = ""
+custom_domain               = ""
+acm_certificate_arn         = ""

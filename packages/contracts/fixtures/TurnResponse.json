@@ -1,0 +1,44 @@
+{
+  "step": {
+    "id": "00000001-1111-4111-8111-111111111111",
+    "source_observation_id": "00000002-1111-4111-8111-111111111111",
+    "instruction": "Open Settings",
+    "explanation": "Change practice preferences",
+    "target": {
+      "kind": "rectangle",
+      "coordinate_space": "normalized_source_image",
+      "geometry_id": "00000003-1111-4111-8111-111111111111",
+      "bounds": {
+        "left": 0.7,
+        "top": 0.1,
+        "right": 0.8,
+        "bottom": 0.2
+      },
+      "visible_label": "Settings"
+    },
+    "expected_user_action": "click",
+    "postconditions": [
+      {
+        "kind": "visible_text",
+        "value": "Workspace settings"
+      }
+    ],
+    "hints": [],
+    "evidence": [
+      {
+        "observation_id": "00000002-1111-4111-8111-111111111111",
+        "detail": "Settings is visible"
+      }
+    ],
+    "uncertainty": []
+  },
+  "verification": null,
+  "action_proposal": null,
+  "completed": false,
+  "schema_version": 1,
+  "session_id": "00000004-1111-4111-8111-111111111111",
+  "session_version": 1,
+  "turn_id": "00000005-1111-4111-8111-111111111111",
+  "observation_id": "00000002-1111-4111-8111-111111111111",
+  "provider": "gemini"
+}

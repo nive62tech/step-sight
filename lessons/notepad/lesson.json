@@ -1,0 +1,9 @@
+{
+  "id": "notepad", "title": "Create and save a practice note", "version": "1.0.0",
+  "qualification": "unqualified", "last_verified": null,
+  "prerequisites": ["Windows Notepad", "A user-approved empty temporary practice folder"],
+  "milestones": ["Create a new blank note", "Enter harmless practice text", "Save a new file in the practice folder and verify its name"],
+  "common_mistakes": ["An unsaved tab is not saved", "Save As may open a new out-of-scope window"],
+  "risk_boundaries": ["No overwriting existing files", "Scope expansion needs fresh local consent", "Sensitive text remains manual"],
+  "sources": [], "supported_build": "not yet qualified"
+}

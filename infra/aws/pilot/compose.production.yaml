@@ -1,0 +1,62 @@
+name: desktop-guide-pilot
+services:
+  proxy:
+    image: nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
+    ports: ["80:80"]
+    volumes: ["./nginx.conf:/etc/nginx/nginx.conf:ro"]
+    networks: [app]
+    read_only: true
+    tmpfs: ["/var/cache/nginx:size=16m", "/var/run:size=1m"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE, SETUID, SETGID, CHOWN]
+    depends_on: [api]
+    restart: unless-stopped
+  api:
+    image: ${API_IMAGE:?set an immutable API image digest or verified local release tag}
+    env_file: .env
+    networks:
+      app:
+        ipv4_address: 172.28.0.10
+    volumes: ["./gcp-external-account.json:/run/config/gcp-external-account.json:ro"]
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /run/config/gcp-external-account.json
+    read_only: true
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    mem_limit: 700m
+    pids_limit: 128
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ap-south-1
+        awslogs-group: /desktop-guide/pilot/api
+        awslogs-stream: runtime-api
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+  db:
+    image: postgres:17.6-bookworm@sha256:f3bd19c606e442c3d7bdfa8002e03fe260a1023351e0ea4598032022b68dd6e3
+    environment:
+      POSTGRES_DB: desktopguide
+      POSTGRES_USER: desktopguide
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a generated production password}
+    networks: [app]
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    # No host port, no credential configuration, no Docker socket.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U desktopguide -d desktopguide"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 500m
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+networks:
+  app:
+    ipam:
+      config: [{subnet: 172.28.0.0/24}]
+volumes:
+  postgres-data:

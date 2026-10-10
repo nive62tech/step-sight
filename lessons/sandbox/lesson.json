@@ -1,0 +1,9 @@
+{
+  "id": "sandbox", "title": "Configure a practice workspace", "version": "1.0.0",
+  "qualification": "unqualified", "last_verified": null,
+  "prerequisites": ["Open http://127.0.0.1:8765 in a browser", "Select that window or monitor explicitly"],
+  "milestones": ["Open Workspace settings", "Choose the Ocean theme and enter a harmless workspace name", "Save and observe Workspace saved"],
+  "common_mistakes": ["The disabled Publish button does nothing", "A toast from Help is not proof of saving", "Wait for the save to finish"],
+  "risk_boundaries": ["No real accounts, uploads or deployments", "One primitive per demonstration approval"],
+  "sources": [], "supported_build": "bundled sandbox 1.0.0"
+}

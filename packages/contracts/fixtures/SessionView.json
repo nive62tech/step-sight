@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "id": "00000004-1111-4111-8111-111111111111",
+  "device_id": "00000006-1111-4111-8111-111111111111",
+  "goal": "Practice",
+  "mode": "guide",
+  "language": "en",
+  "detail_level": "standard",
+  "scope_id": "00000007-1111-4111-8111-111111111111",
+  "session_version": 1,
+  "state": "WAITING_FOR_LEARNER",
+  "lesson_id": "sandbox",
+  "saved_progress": false,
+  "completed_steps": 0,
+  "created_at": "2026-10-10T00:00:00Z",
+  "provider": "gemini",
+  "pending_step": {
+    "id": "00000001-1111-4111-8111-111111111111",
+    "source_observation_id": "00000002-1111-4111-8111-111111111111",
+    "instruction": "Open Settings",
+    "explanation": "Change practice preferences",
+    "target": {
+      "kind": "rectangle",
+      "coordinate_space": "normalized_source_image",
+      "geometry_id": "00000003-1111-4111-8111-111111111111",
+      "bounds": {
+        "left": 0.7,
+        "top": 0.1,
+        "right": 0.8,
+        "bottom": 0.2
+      },
+      "visible_label": "Settings"
+    },
+    "expected_user_action": "click",
+    "postconditions": [
+      {
+        "kind": "visible_text",
+        "value": "Workspace settings"
+      }
+    ],
+    "hints": [],
+    "evidence": [
+      {
+        "observation_id": "00000002-1111-4111-8111-111111111111",
+        "detail": "Settings is visible"
+      }
+    ],
+    "uncertainty": []
+  }
+}

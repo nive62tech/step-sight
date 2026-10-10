@@ -1,0 +1,23 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "session_version": {
+      "minimum": 0,
+      "title": "Session Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "session_version"
+  ],
+  "title": "SessionIntent",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://desktop-guide.invalid/contracts/v1/SessionIntent.schema.json"
+}

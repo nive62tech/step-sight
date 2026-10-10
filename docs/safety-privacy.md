@@ -1,0 +1,27 @@
+# Safety and privacy threat model
+
+Assets include learner media, account tokens, session ownership, permission state, the physical desktop and spending allowance. Trust boundaries are the local consent UI, Windows capture/input, untrusted visible application text, public API, Cognito and GCP inference. A model output is always untrusted.
+
+| Threat | Implemented control | Practical limit / qualification |
+|---|---|---|
+| Screen prompt injection changes goal or grants input | Versioned prompts treat screen/lesson text as evidence; local grants cannot be supplied by server | Live adversarial screenshot tests pending |
+| Stale targets after focus/DPI/scope/window changes | Current observation/geometry, local pixel digest, foreground and hit-test checks; recapture before input and after hover | Can reject benign changes; races are not universally eliminated |
+| Unapproved/replayed/mutated action | Immutable digest-bound local nonce, 15s expiry, atomic single use, per-batch epoch validation | One native click passed; wider native/race matrix remains |
+| Stop/takeover races and stuck controls | Local revoke/cancel first; late-result rejection; bounded tagged batches and held-control cleanup | One submitted OS batch cannot be recalled; harness local invalidation was 0.283ms, broader active-input latency remains unmeasured |
+| Sensitive actions disguised as safe | Demonstrations restricted to declared sandbox lesson/title and local manual-risk keywords; model risk label cannot authorize | Window title is not a cryptographic app identity; pilot is for trusted disposable practice only |
+| Cross-user access or device reuse | Signed access-token validation, scopes, owner-scoped lookups, device binding | Actual Hosted UI HTTP PKCE/refresh/owner isolation passed; Windows browser/DPAPI experience remains |
+| Media storage/log leakage | No media columns; memory-only multipart/WAV; generic errors; access logs disabled; no model debug logging | Memory is not guaranteed secure-erased; OS crash dumps/pagefile and provider processing are outside this policy |
+| Compressed-image/stream exhaustion | Byte, pixel, part, JSON and audio limits; two provider slots, finite turns/context/timeouts/rate/session capacity | Host load tests pending |
+| Retry-driven spending | Each attempt reserved/accounted; at most two transient retries and one schema repair; refusals do not retry; app/global per-user allowance | Estimates and AWS budgets are not hard provider billing caps |
+| Credential theft from other containers | Nonroot API, read-only filesystems, exact role federation, no GCP keys, Docker metadata firewall | Host root/SSM administrators and the inference container can use the role |
+| Deletion undone by restore | Tombstones, shorter backup expiry, current deletion ledger required before restoring exposure | Disaster recovery must have a recent independent ledger; fail closed when unavailable |
+
+Observation consent permits a selected source only. Pointer consent is separate. Demonstration mode additionally requires a local exact-action approval. A mask hides image pixels before upload; pointer/click/scroll targets inside masks are rejected. Source and mask edits invalidate preview acceptance. Capture exclusion is requested for panel/overlay but Windows support is not proof of exclusion; users must inspect the preview. Inactivity pauses observation after five minutes; lock/sleep/disconnect, Stop and sign-out revoke input.
+
+Raw screenshots/audio and full prompts/responses are not saved by this application. Frames, audio, pending steps, goals for unsaved sessions and five-minute idempotency responses live in process memory. Unsaved session metadata expires after one hour; saved goals/milestone metadata after 30 days. Operational logs expire after 7 days, usage-only records after 90 days and deletion tombstones after 30 days. Users/devices retain identifiers for ownership; full account erasure is a separate administrator procedure. Local progress and refresh tokens use Windows user-bound DPAPI, only on opt-in; access tokens and grants remain in memory.
+
+The desktop's Delete button clears local progress and deletes the current cloud lesson. Sign-out clears the remembered refresh token and attempts provider revocation. Administrative deletion of earlier sessions uses owner-scoped API calls; there is no bulk history browser yet. Backups contain persisted metadata, not raw media, are encrypted, and expire after 14 days plus noncurrent-version lifecycle delay. Deletion must also be reconciled after restoring an older snapshot.
+
+Screenshots traverse HTTPS to CloudFront, its private VPC HTTP origin connection, and managed GCP inference. Global inference processing was selected by the user. The private origin path passed deployed checks; direct public instance access is blocked. The default CloudFront certificate has AWS's fixed edge policy; a custom certificate/hostname is needed to enforce a modern minimum. Do not advertise end-to-end zero retention: Google's abuse-monitoring and caching conditions can differ from application storage. Review the [provider retention conditions](https://docs.cloud.google.com/gemini-enterprise-agent-platform/resources/zero-data-retention) before learner use.
+
+Remaining release gates include real input/Stop/occlusion/capture exclusion/DPI/Unicode tests, prompt-injection/refusal cases with live inference, federated credential refresh, load/memory/latency qualification and signing. No public learner rollout should claim these checks passed from fake tests.

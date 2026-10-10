@@ -1,0 +1,6 @@
+project_id      = "dg-pilot-214422569127"
+create_project  = true # Set false only for an explicitly approved existing project.
+billing_account = "REPLACE_WITH_CONNECTED_BILLING_ACCOUNT_ID"
+aws_account_id  = "214422569127"
+aws_role_name   = "dg-pilot-runtime"
+enable_speech   = false

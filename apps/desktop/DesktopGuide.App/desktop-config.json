@@ -1,0 +1,11 @@
+{
+  "ApiOrigin": "http://127.0.0.1:8000",
+  "AuthMode": "mock",
+  "CognitoIssuer": "",
+  "CognitoClientId": "",
+  "CognitoDomain": "",
+  "Scopes": "openid desktop-guide/lessons",
+  "CallbackUri": "http://localhost:43827/callback/",
+  "BrandName": "Desktop Guide",
+  "BuildLabel": "Unsigned development build"
+}

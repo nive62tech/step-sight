@@ -1,0 +1,12 @@
+.git
+.qodo
+.tools
+.venv
+**/bin
+**/obj
+**/__pycache__
+.env
+artifacts
+.local
+infra
+apps

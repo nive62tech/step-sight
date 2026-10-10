@@ -1,0 +1,13 @@
+[Unit]
+Description=Desktop Guide container metadata isolation
+After=docker.service
+Requires=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/desktop-guide/runtime-firewall.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target docker.service

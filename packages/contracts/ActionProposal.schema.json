@@ -1,0 +1,199 @@
+{
+  "$defs": {
+    "ClickAction": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "click",
+          "title": "Kind",
+          "type": "string"
+        },
+        "x": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Y",
+          "type": "number"
+        },
+        "button": {
+          "const": "left",
+          "default": "left",
+          "title": "Button",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "x",
+        "y"
+      ],
+      "title": "ClickAction",
+      "type": "object"
+    },
+    "KeyAction": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "key_chord",
+          "title": "Kind",
+          "type": "string"
+        },
+        "chord": {
+          "enum": [
+            "Ctrl+A",
+            "Ctrl+C",
+            "Ctrl+S",
+            "Escape",
+            "Tab"
+          ],
+          "title": "Chord",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "chord"
+      ],
+      "title": "KeyAction",
+      "type": "object"
+    },
+    "ScrollAction": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "scroll",
+          "title": "Kind",
+          "type": "string"
+        },
+        "x": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Y",
+          "type": "number"
+        },
+        "ticks": {
+          "maximum": 3,
+          "minimum": -3,
+          "title": "Ticks",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "x",
+        "y",
+        "ticks"
+      ],
+      "title": "ScrollAction",
+      "type": "object"
+    },
+    "TypeAction": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "type",
+          "title": "Kind",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "text"
+      ],
+      "title": "TypeAction",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "source_observation_id": {
+      "format": "uuid",
+      "title": "Source Observation Id",
+      "type": "string"
+    },
+    "geometry_id": {
+      "format": "uuid",
+      "title": "Geometry Id",
+      "type": "string"
+    },
+    "action": {
+      "discriminator": {
+        "mapping": {
+          "click": "#/$defs/ClickAction",
+          "key_chord": "#/$defs/KeyAction",
+          "scroll": "#/$defs/ScrollAction",
+          "type": "#/$defs/TypeAction"
+        },
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ClickAction"
+        },
+        {
+          "$ref": "#/$defs/ScrollAction"
+        },
+        {
+          "$ref": "#/$defs/TypeAction"
+        },
+        {
+          "$ref": "#/$defs/KeyAction"
+        }
+      ],
+      "title": "Action"
+    },
+    "effect": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Effect",
+      "type": "string"
+    },
+    "risk": {
+      "enum": [
+        "low",
+        "manual"
+      ],
+      "title": "Risk",
+      "type": "string"
+    },
+    "provider_confirmation_required": {
+      "default": false,
+      "title": "Provider Confirmation Required",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "id",
+    "source_observation_id",
+    "geometry_id",
+    "action",
+    "effect",
+    "risk"
+  ],
+  "title": "ActionProposal",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://desktop-guide.invalid/contracts/v1/ActionProposal.schema.json"
+}

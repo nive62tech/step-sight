@@ -1,0 +1,84 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "sequence": {
+      "minimum": 0,
+      "title": "Sequence",
+      "type": "integer"
+    },
+    "local_epoch": {
+      "minimum": 0,
+      "title": "Local Epoch",
+      "type": "integer"
+    },
+    "session_version": {
+      "minimum": 0,
+      "title": "Session Version",
+      "type": "integer"
+    },
+    "kind": {
+      "enum": [
+        "attempt",
+        "skipped",
+        "takeover",
+        "privacy_pause",
+        "dispatch",
+        "unknown_outcome"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "proposal_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Proposal Id"
+    },
+    "outcome": {
+      "anyOf": [
+        {
+          "enum": [
+            "not_dispatched",
+            "dispatched",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Outcome"
+    }
+  },
+  "required": [
+    "id",
+    "sequence",
+    "local_epoch",
+    "session_version",
+    "kind"
+  ],
+  "title": "LearnerEvent",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://desktop-guide.invalid/contracts/v1/LearnerEvent.schema.json"
+}
