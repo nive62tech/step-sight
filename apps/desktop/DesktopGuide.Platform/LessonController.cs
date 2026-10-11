@@ -35,6 +35,10 @@ public sealed class LessonController : IDisposable
     private volatile bool disposed;
     private int polling;
     private int restoringMarker;
+    private readonly SemaphoreSlim autonomousGate = new(1);
+    private int resuming;
+    private Task remoteIntent = Task.CompletedTask;
+    private string? latestVerification;
     public GuideMarkerState MarkerState { get; private set; }
     public bool HasCurrentInstruction => previous is not null;
     public bool CanLocateCurrentTarget => previous is not null && previous.ExpectedUserAction != "wait";
@@ -42,7 +46,9 @@ public sealed class LessonController : IDisposable
     private void SetMarkerState(GuideMarkerState value) { MarkerState = value; MarkerStateChanged?.Invoke(value); }
     private DateTimeOffset lastAutomaticObservation = DateTimeOffset.MinValue;
     public PermissionSupervisor Permissions { get; } = new();
+    public Guid DeviceId => store.DeviceId;
     public LessonState State => machine.State;
+    public InteractionMode Mode => mode;
     public IReadOnlyList<Bounds> Masks { get; set; } = [];
     public bool NarrationEnabled { get; set; }
     public string DetailLevel { get; set; } = "standard";
@@ -71,13 +77,16 @@ public sealed class LessonController : IDisposable
         privacyTimer = new(_ =>
         {
             if (disposed) return;
+            if (mode == InteractionMode.Autonomous && State is not (LessonState.Idle or LessonState.Stopped or LessonState.Completed or LessonState.Paused or LessonState.PrivacyPaused or LessonState.NetworkInterrupted)
+                && source is not null && (tracker.IsLocked || !tracker.IsForegroundAndVisible(source)))
+            { Interrupt(LessonState.PrivacyPaused); Notice?.Invoke("Autonomous control paused because the task window lost focus. Resume when ready."); return; }
             if (State is not (LessonState.Idle or LessonState.Stopped or LessonState.Completed) && !activity.TrackingAvailable)
             { Interrupt(LessonState.PrivacyPaused); Notice?.Invoke("Local input observer heartbeat failed. Resume only after the observer is available."); return; }
             if (State is LessonState.WaitingForLearner or LessonState.WaitingForApplication or LessonState.Recovering)
             {
                 if (DateTimeOffset.UtcNow - lastActivity > TimeSpan.FromMinutes(5)) Interrupt(LessonState.PrivacyPaused);
                 else if (source is not null && tracker.IsLocked) Interrupt(LessonState.PrivacyPaused);
-                else if (State == LessonState.WaitingForLearner && !pointAllowed && MarkerState == GuideMarkerState.FocusRequired
+                else if (mode != InteractionMode.Autonomous && State == LessonState.WaitingForLearner && !pointAllowed && MarkerState == GuideMarkerState.FocusRequired
                          && source is not null && tracker.IsForegroundAndVisible(source)) _ = RestoreVisualMarkerAsync();
                 else if (source is not null && frame is not null && tracker.IsForegroundAndVisible(source)
                          && DateTimeOffset.UtcNow - lastAutomaticObservation > TimeSpan.FromSeconds(5)) _ = PollForChangeAsync();
@@ -98,16 +107,20 @@ public sealed class LessonController : IDisposable
     }
 
     public async Task StartAsync(CaptureSource selected, string selectedGoal, string selectedLesson,
-        InteractionMode selectedMode, bool point, bool demonstration, bool save)
+        InteractionMode selectedMode, bool point, bool demonstration, bool save, bool autonomousConsent = false)
     {
         if (frame is null || source?.ScopeId != selected.ScopeId) throw new SafetyException("Preview the selected source before starting");
         if ((point || demonstration) && !activity.TrackingAvailable) throw new SafetyException("Input observer unavailable; pointer and demonstrations remain disarmed");
+        if (selectedMode == InteractionMode.Autonomous && (!autonomousConsent || selected.Kind != "window" || !activity.TrackingAvailable || !tracker.IsForegroundAndVisible(selected)))
+            throw new SafetyException("Autonomous mode needs fresh control consent, a focused application window and the local input observer.");
         StopLocal();
         machine = new SessionMachine(); WireMachine(); machine.Transition(LessonState.Consent);
         source = selected; goal = selectedGoal; lessonId = selectedLesson; mode = selectedMode;
         pointAllowed = point; demonstrationAllowed = demonstration; savedProgress = save;
-        Permissions.GrantFromLocalConsent(source.ScopeId, mode, true, pointAllowed, demonstrationAllowed);
+        if (mode == InteractionMode.Autonomous) Permissions.GrantAutonomousTaskFromLocalConsent(source.ScopeId, source.TargetId, autonomousConsent);
+        else Permissions.GrantFromLocalConsent(source.ScopeId, mode, true, pointAllowed, demonstrationAllowed);
         activity.ObservationEnabled = true;
+        activity.AutonomousControlActive = mode == InteractionMode.Autonomous;
         previous = null; proposal = null; eventSequence = 0;
         machine.Transition(LessonState.Observing);
         var epoch = Permissions.Epoch;
@@ -117,22 +130,110 @@ public sealed class LessonController : IDisposable
             if (epoch != Permissions.Epoch) return;
             lock (sessionGate) session = created;
             await ObserveTurnAsync("start");
+            if (epoch == Permissions.Epoch && mode == InteractionMode.Autonomous) await RunAutonomousAsync();
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { Interrupt(LessonState.NetworkInterrupted); Notice?.Invoke(Friendly(ex)); }
+        catch (Exception ex) { if (epoch == Permissions.Epoch) { Interrupt(LessonState.NetworkInterrupted); Notice?.Invoke(Friendly(ex)); } }
     }
 
-    private static string ModeName(InteractionMode value) => value switch { InteractionMode.Guide => "guide", InteractionMode.Demonstrate => "demonstrate", _ => "practice" };
+    private static string ModeName(InteractionMode value) => value switch { InteractionMode.Guide => "guide", InteractionMode.Demonstrate => "demonstrate", InteractionMode.Autonomous => "autonomous", _ => "practice" };
+
+    private async Task RunAutonomousAsync()
+    {
+        var epoch = Permissions.Epoch; var token = Permissions.Cancellation;
+        try { await autonomousGate.WaitAsync(token); } catch (OperationCanceledException) { return; }
+        var repeated = new Dictionary<(string Pixels, InputAction Action), int>();
+        var blockedAttempts = 0; var waitingChecks = 0; var recoveryAttempts = 0;
+        try
+        {
+            while (epoch == Permissions.Epoch && source is not null && frame is not null && previous is not null
+                && State is LessonState.WaitingForLearner or LessonState.WaitingForApplication)
+            {
+                token.ThrowIfCancellationRequested();
+                Permissions.RequireAutonomousTask(source.ScopeId, source.TargetId);
+                if (!activity.TrackingAvailable || tracker.IsLocked || !tracker.IsForegroundAndVisible(source))
+                    throw new SafetyException("Autonomous control paused: return to the task window and resume.");
+                if (State == LessonState.WaitingForApplication)
+                {
+                    if (++waitingChecks > 40) throw new SafetyException("The application is still waiting. Resume after it is ready.");
+                    await Task.Delay(1500, token);
+                    var changed = await capture.CaptureAsync(source, Masks, token);
+                    if (tracker.HasMeaningfulChange(frame, changed) || waitingChecks % 10 == 0) await ObserveTurnAsync("reobserve");
+                    continue;
+                }
+                waitingChecks = 0;
+                if (proposal is null && previous.ExpectedUserAction is "click" or "scroll" or "type"
+                    && latestVerification != "UNCERTAIN" && recoveryAttempts < 2)
+                {
+                    recoveryAttempts++;
+                    Notice?.Invoke("The target is blocked or unavailable. Checking the screen for a safe way forward...");
+                    await ObserveTurnAsync("recover");
+                    continue;
+                }
+                var action = proposal ?? throw new SafetyException("No safe action is visible yet. Check the page, then Resume to analyse it again.");
+                LocalRiskPolicy.RequireAutonomousAction(new(previous, action));
+                Notice?.Invoke("");
+                if (previous.Target is { } target)
+                {
+                    pointer.SetHint(previous.Instruction, previous.ExpectedUserAction);
+                    await pointer.ShowVisualAsync(frame, target, source, token);
+                    SetMarkerState(GuideMarkerState.Visible);
+                }
+                var fresh = await capture.CaptureAsync(source, Masks, token);
+                if (epoch != Permissions.Epoch) return;
+                if (fresh.Geometry != frame.Geometry || fresh.PixelDigest != frame.PixelDigest)
+                {
+                    if (++blockedAttempts >= 3) throw new SafetyException("The screen keeps changing. Autonomous control paused before clicking.");
+                    await ObserveTurnAsync("reobserve"); continue;
+                }
+                var key = (frame.PixelDigest, action.Action);
+                var attempts = repeated.GetValueOrDefault(key);
+                if (attempts >= 2) throw new SafetyException("The same action has not changed the screen. Control is paused for your review.");
+                repeated[key] = attempts + 1;
+                var capability = Permissions.ApproveAutonomousAction(action, frame);
+                machine.Transition(LessonState.Acting);
+                Presentation?.Invoke(previous.Instruction, "Autonomous mode · performing one action, then checking its result.", "Agent acting");
+                var receipt = await executor.ExecuteAsync(capability, action, frame, source, token);
+                if (epoch != Permissions.Epoch) return;
+                proposal = null; ProposalChanged?.Invoke(null); pointer.Hide(); SetMarkerState(GuideMarkerState.Off);
+                if (receipt.ProposalId != action.Id || receipt.LocalEpoch != epoch || receipt.Outcome is not ("dispatched" or "not_dispatched" or "unknown"))
+                    throw new SafetyException("Input returned an incompatible receipt. Control has been paused.");
+                if (session is not null)
+                    await api.EventAsync(session.Id, new(1, Guid.NewGuid(), ++eventSequence, epoch, session.SessionVersion, "dispatch", action.Id, receipt.Outcome), token);
+                if (receipt.Outcome == "not_dispatched")
+                {
+                    if (++blockedAttempts >= 3) throw new SafetyException("Input could not reach the current target. Autonomous control paused.");
+                    machine.Transition(LessonState.Observing); await ObserveTurnAsync("reobserve"); continue;
+                }
+                blockedAttempts = 0; recoveryAttempts = 0;
+                machine.Transition(LessonState.Verifying);
+                await Task.Delay(650, token);
+                await ObserveTurnAsync("autonomous_result");
+                if (epoch != Permissions.Epoch) return;
+                if (receipt.Outcome == "unknown" && latestVerification != "CONFIRMED")
+                    throw new SafetyException("The last action's outcome is uncertain. Check it manually before resuming; it will not be blindly repeated.");
+            }
+            if (epoch == Permissions.Epoch && State is LessonState.Recovering or LessonState.WaitingForLearner)
+                throw new SafetyException("The agent needs your help to establish the current state. Check the screen, then resume.");
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            if (epoch == Permissions.Epoch) { PauseLocal(); Notice?.Invoke(Friendly(ex)); }
+        }
+        finally { autonomousGate.Release(); }
+    }
 
     public async Task ObserveTurnAsync(string eventKind)
     {
         if (source is null || session is null || State is LessonState.Stopped or LessonState.Paused or LessonState.PrivacyPaused or LessonState.NetworkInterrupted or LessonState.Completed) return;
-        if (!await turnGate.WaitAsync(0)) return;
         var epoch = Permissions.Epoch;
+        try { await turnGate.WaitAsync(Permissions.Cancellation); } catch (OperationCanceledException) { return; }
         var locating = eventKind == "locate";
         var locateAfterTurn = false;
         try
         {
+            if (epoch != Permissions.Epoch || State is LessonState.Stopped or LessonState.Paused or LessonState.PrivacyPaused or LessonState.NetworkInterrupted or LessonState.Completed) return;
             if (locating && !CanLocateCurrentTarget) return;
             var token = Permissions.Cancellation;
             Permissions.RequireObservation(source.ScopeId);
@@ -149,6 +250,7 @@ public sealed class LessonController : IDisposable
             var roundtripMs = timer.Elapsed.TotalMilliseconds; timer.Restart();
             if (epoch != Permissions.Epoch) return;
             ValidateResponse(result, localSession, current);
+            latestVerification = result.Verification?.Status;
             if (locating && (result.Step is not { } located || previous is null || located.Id != previous.Id
                 || located.Instruction != previous.Instruction || located.ExpectedUserAction != previous.ExpectedUserAction
                 || !located.Postconditions.SequenceEqual(previous.Postconditions) || result.Completed
@@ -164,7 +266,8 @@ public sealed class LessonController : IDisposable
                 session = session with { CompletedSteps = session.CompletedSteps + 1 };
                 if (savedProgress) store.SaveSummary(lessonId, session.CompletedSteps);
             }
-            if (previous is not null && result.Verification?.Status != "CONFIRMED" && !locating)
+            if (previous is not null && result.Verification?.Status != "CONFIRMED" && !locating && eventKind != "resume"
+                && !(mode == InteractionMode.Autonomous && result.Step is not null && result.Verification?.Status is "NOT_YET" or "DIFFERENT_STATE"))
             {
                 var waiting = previous.ExpectedUserAction == "wait";
                 SetMarkerState(waiting ? GuideMarkerState.WaitingForPage : GuideMarkerState.ScreenChanged);
@@ -181,7 +284,7 @@ public sealed class LessonController : IDisposable
                 SetMarkerState(GuideMarkerState.Off);
                 machine.Transition(LessonState.Completed); previous = null;
                 Presentation?.Invoke("Lesson complete", "The final visible outcome was confirmed by the configured provider.", result.Provider);
-                Permissions.Revoke(); capture.StopCapture(); pointer.Hide(); activity.ObservationEnabled = false; return;
+                Permissions.Revoke(); capture.StopCapture(); pointer.Hide(); activity.ObservationEnabled = false; activity.AutonomousControlActive = false; return;
             }
             if (result.Step is null) throw new SafetyException("No grounded next step; reobserve or ask for help");
             previous = result.Step; proposal = result.ActionProposal;
@@ -198,8 +301,8 @@ public sealed class LessonController : IDisposable
             else
             {
                 machine.Transition(LessonState.WaitingForLearner);
-                if (mode != InteractionMode.Practice) await ShowWhereAsync();
-                locateAfterTurn = mode != InteractionMode.Practice && !locating && MarkerState is GuideMarkerState.MissingTarget or GuideMarkerState.ScreenChanged or GuideMarkerState.BrowserTargetUnconfirmed;
+                if (mode is not (InteractionMode.Practice or InteractionMode.Autonomous)) await ShowWhereAsync();
+                locateAfterTurn = mode is not (InteractionMode.Practice or InteractionMode.Autonomous) && !locating && MarkerState is GuideMarkerState.MissingTarget or GuideMarkerState.ScreenChanged or GuideMarkerState.BrowserTargetUnconfirmed;
             }
             if (NarrationEnabled) await NarrateAsync(previous.Instruction + " " + previous.Explanation, epoch);
         }
@@ -213,12 +316,13 @@ public sealed class LessonController : IDisposable
         catch (SafetyException ex)
         {
             if (epoch != Permissions.Epoch) return;
+            if (mode == InteractionMode.Autonomous) { PauseLocal(); Notice?.Invoke(ex.Message); return; }
             Permissions.CancelPendingInput(); pointer.Hide(); speech.Stop(); proposal = null; ProposalChanged?.Invoke(null);
             SetMarkerState(previous is null ? GuideMarkerState.Off : GuideMarkerState.ScreenChanged);
             Notice?.Invoke(ex.Message);
             if (State is LessonState.Planning or LessonState.Verifying) machine.Transition(LessonState.Recovering);
         }
-        catch (Exception ex) { Interrupt(LessonState.NetworkInterrupted); Notice?.Invoke(Friendly(ex)); }
+        catch (Exception ex) { if (epoch == Permissions.Epoch) { Interrupt(LessonState.NetworkInterrupted); Notice?.Invoke(Friendly(ex)); } }
         finally
         {
             turnGate.Release();
@@ -391,6 +495,7 @@ public sealed class LessonController : IDisposable
     }
     private void LearnerActivity()
     {
+        if (mode == InteractionMode.Autonomous && activity.AutonomousControlActive) { Takeover(); return; }
         lastActivity = DateTimeOffset.UtcNow;
         if (source is null || !tracker.IsForegroundAndVisible(source) || State is not (LessonState.WaitingForLearner or LessonState.WaitingForApplication or LessonState.Recovering)) return;
         lock (sessionGate)
@@ -406,6 +511,7 @@ public sealed class LessonController : IDisposable
     }
     private async Task PollForChangeAsync()
     {
+        if (mode == InteractionMode.Autonomous) return; // The serialized autonomous loop owns observation.
         if (Interlocked.Exchange(ref polling, 1) != 0) return;
         lastAutomaticObservation = DateTimeOffset.UtcNow;
         try
@@ -443,6 +549,7 @@ public sealed class LessonController : IDisposable
         Permissions.Revoke(); capture.StopCapture(); pointer.Hide(); speech.Stop(); microphone.Cancel(); executor.ReleaseHeldControls();
         SetMarkerState(GuideMarkerState.Off);
         activity.ObservationEnabled = false;
+        activity.AutonomousControlActive = false;
         proposal = null; ProposalChanged?.Invoke(null); debounce?.Cancel();
         if (State is not (LessonState.Stopped or LessonState.Idle or LessonState.Completed)) machine.Transition(state);
     }
@@ -451,13 +558,19 @@ public sealed class LessonController : IDisposable
         var stoppedSession = session;
         Interrupt(LessonState.Stopped);
         if (State != LessonState.Stopped) machine.Transition(LessonState.Stopped);
-        if (stoppedSession is not null) _ = BestEffortIntent(stoppedSession, "stop");
+        if (stoppedSession is not null) QueueIntent(stoppedSession, "stop");
     }
     public void PauseLocal()
     {
         Interrupt(LessonState.Paused);
-        if (session is not null) _ = BestEffortIntent(session, "pause");
+        if (session is not null) QueueIntent(session, "pause");
     }
+    private void QueueIntent(SessionView snapshot, string intent)
+    {
+        lock (sessionGate) remoteIntent = AfterIntent(remoteIntent, snapshot, intent);
+    }
+    private async Task AfterIntent(Task prior, SessionView snapshot, string intent)
+    { await prior; await BestEffortIntent(snapshot, intent); }
     private async Task BestEffortIntent(SessionView snapshot, string intent)
     {
         try
@@ -470,24 +583,48 @@ public sealed class LessonController : IDisposable
         }
         catch { /* Local safety already completed; remote recording is best effort. */ }
     }
-    public async Task ResumeAsync()
+    public async Task ResumeAsync(bool autonomousConsent = false)
     {
         if (source is null || session is null || State is not (LessonState.Paused or LessonState.PrivacyPaused or LessonState.NetworkInterrupted)) return;
+        if (Interlocked.Exchange(ref resuming, 1) != 0) return;
         var snapshot = session;
+        var epoch = Permissions.Epoch;
         try
         {
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            if (mode == InteractionMode.Autonomous && !autonomousConsent) throw new SafetyException("Resume autonomous control only with fresh task consent.");
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(Permissions.Cancellation);
+            deadline.CancelAfter(TimeSpan.FromSeconds(50));
+            // A cancelled HTTP request or executor can finish late. Drain the old local
+            // loop and observation before arming a new epoch; never silently skip resume.
+            await autonomousGate.WaitAsync(deadline.Token);
+            try { await turnGate.WaitAsync(deadline.Token); turnGate.Release(); }
+            finally { autonomousGate.Release(); }
+            Task pending; lock (sessionGate) pending = remoteIntent;
+            await pending.WaitAsync(deadline.Token);
+            if (epoch != Permissions.Epoch) return;
             var latest = await api.GetAsync(snapshot.Id, deadline.Token);
+            if (epoch != Permissions.Epoch) return;
             if (latest.State == "STOPPED") throw new SafetyException("This lesson was stopped. Start a new lesson with fresh consent.");
+            if (mode == InteractionMode.Autonomous && (source.Kind != "window" || !activity.TrackingAvailable || !tracker.IsForegroundAndVisible(source)))
+                throw new SafetyException("Focus the task window and restore the input observer before resuming autonomous control.");
             var resumed = await api.IntentAsync(snapshot.Id, "resume", latest.SessionVersion, deadline.Token);
-            session = resumed; previous = latest.PendingStep;
+            if (epoch != Permissions.Epoch) return;
+            if (mode == InteractionMode.Autonomous && (source.Kind != "window" || !activity.TrackingAvailable || !tracker.IsForegroundAndVisible(source)))
+                throw new SafetyException("Focus the task window and restore the input observer before resuming autonomous control.");
+            session = resumed; previous = resumed.PendingStep; latestVerification = null;
             machine.Transition(LessonState.Consent);
-            Permissions.GrantFromLocalConsent(source.ScopeId, mode, true, pointAllowed, demonstrationAllowed);
+            if (mode == InteractionMode.Autonomous) Permissions.GrantAutonomousTaskFromLocalConsent(source.ScopeId, source.TargetId, autonomousConsent);
+            else Permissions.GrantFromLocalConsent(source.ScopeId, mode, true, pointAllowed, demonstrationAllowed);
             activity.ObservationEnabled = true;
+            activity.AutonomousControlActive = mode == InteractionMode.Autonomous;
             machine.Transition(LessonState.Observing); lastActivity = DateTimeOffset.UtcNow;
-            await ObserveTurnAsync("reobserve");
+            epoch = Permissions.Epoch;
+            await ObserveTurnAsync("resume");
+            if (epoch == Permissions.Epoch && mode == InteractionMode.Autonomous) await RunAutonomousAsync();
         }
-        catch (Exception ex) { Notice?.Invoke(Friendly(ex)); }
+        catch (OperationCanceledException) { if (epoch == Permissions.Epoch) Notice?.Invoke("The previous analysis is still ending. Control remains paused; try Resume again."); }
+        catch (Exception ex) { if (epoch == Permissions.Epoch) Notice?.Invoke(Friendly(ex)); }
+        finally { Interlocked.Exchange(ref resuming, 0); }
     }
     private static string Friendly(Exception ex) => ex is SafetyException ? ex.Message : "The service or device is unavailable. Local input is disarmed; check setup and resume explicitly.";
     public void Dispose()

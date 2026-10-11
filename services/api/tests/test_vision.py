@@ -73,3 +73,16 @@ def test_locator_binds_only_geometry_and_evidence_without_creating_steps():
     located = VisualLocation(target=prediction()["step"]["target"], evidence=["Save is visible"]).bind(obs)
     assert located.source_observation_id == obs.id and located.target.geometry_id == obs.geometry_id
     assert located.evidence[0].observation_id == obs.id
+
+
+@pytest.mark.parametrize("status", ["NOT_YET", "DIFFERENT_STATE", "UNCERTAIN"])
+def test_autonomous_recovery_binds_fresh_action_without_false_completion(status):
+    raw = VisualResult.model_validate(prediction(completed=True,
+        verification={"status": status, "evidence": ["Preferences still visible"]},
+        action_proposal={"action": {"kind": "click", "x": .7, "y": .8}, "effect": "Open preferences", "risk": "low"}))
+    obs = observation()
+    result = raw.bind(obs, has_previous=True, autonomous=True)
+    assert not result.completed
+    assert (result.action_proposal is None) == (status == "UNCERTAIN")
+    if result.action_proposal:
+        assert result.action_proposal.source_observation_id == obs.id

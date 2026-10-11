@@ -1,9 +1,9 @@
 {
   "id": "browser", "title": "Live window guidance", "version": "1.1.0",
   "qualification": "experimental", "last_verified": null,
-  "prerequisites": ["A visible application window selected or opened for the learner's goal", "The learner performs application actions"],
+  "prerequisites": ["A visible application window selected or opened for the learner's goal", "Follow the selected guided or autonomous interaction mode"],
   "milestones": [],
   "common_mistakes": ["The application may still be loading", "Do not infer success from a click"],
-  "risk_boundaries": ["Choose each step from the current image and the learner's goal; there is no preset walkthrough", "All clicks and typing remain with the learner", "Passwords, secrets, billing, resource creation, publishing and deployment are manual", "Report completion only with visible evidence matching the learner's goal"],
+  "risk_boundaries": ["Choose each step from the current image and the learner's goal; there is no preset walkthrough", "Guided mode leaves clicks and typing to the learner; autonomous mode may propose ordinary navigation under local task consent", "Passwords, secrets, billing, resource creation, publishing and deployment are manual", "Report completion only with visible evidence matching the learner's goal"],
   "sources": [], "supported_build": "not yet qualified"
 }

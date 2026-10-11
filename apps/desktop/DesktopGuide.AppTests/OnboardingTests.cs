@@ -5,11 +5,83 @@ using DesktopGuide.Core;
 using DesktopGuide.Platform;
 using DesktopGuide.Windows;
 using Xunit;
+using System.Threading.Channels;
 
 namespace DesktopGuide.AppTests;
 
 public sealed class OnboardingTests
 {
+    private sealed class PhoneApi : IRemoteAgentClient
+    {
+        public Channel<RemoteCommand?> Responses = Channel.CreateUnbounded<RemoteCommand?>();
+        public Channel<RemotePoll> Requests = Channel.CreateUnbounded<RemotePoll>();
+        public Task<RemoteLease> RegisterAsync(RemoteRegistration r, CancellationToken c) => Task.FromResult(new RemoteLease(1, Guid.NewGuid(), "synthetic", DateTimeOffset.UtcNow.AddHours(1)));
+        public async Task<RemotePollResponse> PollAsync(RemoteLease l, RemotePoll r, CancellationToken c)
+        { await Requests.Writer.WriteAsync(r, c); return new(1, await Responses.Reader.ReadAsync(c)); }
+        public Task DisconnectAsync(RemoteLease l, CancellationToken c) => Task.CompletedTask;
+    }
+    [Fact] public async Task PhoneTaskUsesLocallyAllowedModeAndLocalStopRejectsLateBrowserLaunch()
+    {
+        var launcher = new Launcher(); var phone = new PhoneApi(); using var f = new Fixture(launcher);
+        await f.Vm.SignInCommand.ExecuteAsync(null);
+        f.Vm.AttachRemote(phone, "https://example.invalid"); f.Vm.AllowAutonomousPhoneTasks = true;
+        await f.Vm.EnablePhoneControlCommand.ExecuteAsync(null);
+        Assert.True(f.Vm.PhoneControlEnabled); Assert.False(f.Vm.CanSubmitTask);
+        await phone.Requests.Reader.ReadAsync();
+        await phone.Responses.Writer.WriteAsync(new(Guid.NewGuid(), "start", "autonomous", "Find trains", DateTimeOffset.UtcNow.AddSeconds(30)));
+        var ack = await phone.Requests.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(4));
+        Assert.True(ack.Acknowledgement!.Accepted); Assert.True(f.Vm.IsAutonomous); Assert.Equal(1, launcher.Opens);
+        f.Vm.StopCommand.Execute(null);
+        launcher.Complete.SetResult(new(Guid.NewGuid(), Guid.NewGuid(), "synthetic browser", "window"));
+        for (var i = 0; i < 100 && f.Vm.IsBusy; i++) await Task.Delay(10);
+        Assert.False(f.Vm.IsBusy); Assert.False(f.Vm.PhoneControlEnabled); Assert.False(f.Vm.ObservationConsent);
+        Assert.Equal(LessonState.Stopped, f.Controller.State); Assert.Null(f.Vm.SelectedSource);
+    }
+    private sealed class Voice : IVoicePromptRecorder
+    {
+        public int Starts, Cancels;
+        public TaskCompletionSource<string> Result = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Start() => Starts++;
+        public Task<string> FinishAsync(CancellationToken c) => Result.Task; // Simulate a late transcription.
+        public void Cancel() => Cancels++;
+    }
+    [Fact] public async Task BlobVoiceProducesAnEditableDraftWithoutStartingActions()
+    {
+        var voice = new Voice(); using var f = new Fixture(voice: voice);
+        await f.Vm.SignInCommand.ExecuteAsync(null); f.Vm.AutonomousModeSelected = true;
+        await f.Vm.TogglePromptVoiceCommand.ExecuteAsync(null);
+        Assert.True(f.Vm.VoiceListening); Assert.False(f.Vm.CanSubmitTask); Assert.Equal(1, voice.Starts);
+        var finishing = f.Vm.TogglePromptVoiceCommand.ExecuteAsync(null);
+        Assert.True(f.Vm.VoiceTranscribing); f.Vm.AutonomousConsent = true;
+        voice.Result.SetResult("Find available trains tomorrow"); await finishing;
+        Assert.Equal("Find available trains tomorrow", f.Vm.Goal);
+        Assert.False(f.Vm.AutonomousConsent); Assert.False(f.Vm.ObservationConsent); Assert.False(f.Vm.HasLesson);
+        Assert.True(f.Vm.CanSubmitTask);
+    }
+    [Theory] [InlineData(false)] [InlineData(true)]
+    public async Task StopOrModeChangeDiscardsLateVoiceDraft(bool modeChange)
+    {
+        var voice = new Voice(); using var f = new Fixture(voice: voice);
+        await f.Vm.SignInCommand.ExecuteAsync(null); var original = f.Vm.Goal;
+        await f.Vm.TogglePromptVoiceCommand.ExecuteAsync(null);
+        var finishing = f.Vm.TogglePromptVoiceCommand.ExecuteAsync(null);
+        if (modeChange) f.Vm.AutonomousModeSelected = true; else f.Vm.StopCommand.Execute(null);
+        voice.Result.SetResult("A late draft"); await finishing;
+        Assert.Equal(original, f.Vm.Goal); Assert.False(f.Vm.VoiceListening); Assert.False(f.Vm.VoiceTranscribing);
+        Assert.True(voice.Cancels > 0); Assert.False(f.Vm.AutonomousConsent);
+    }
+    [Fact] public async Task AutonomousSelectionNeedsConsentBeforeAnySignInOrLaunch()
+    {
+        var launcher = new Launcher(); using var f = new Fixture(launcher);
+        Assert.Equal(0, f.Vm.SelectedTaskMode); Assert.False(f.Vm.IsAutonomous);
+        f.Vm.SelectedTaskMode = 1; Assert.True(f.Vm.IsAutonomous); Assert.False(f.Vm.AutonomousConsent);
+        await f.Vm.ContinueSetupCommand.ExecuteAsync(null);
+        Assert.Contains("Allow autonomous control", f.Vm.Notice); Assert.False(f.Login.SignedIn); Assert.Equal(0, launcher.Opens);
+        f.Vm.AutonomousConsent = true; f.Vm.SelectedTaskMode = 0;
+        Assert.False(f.Vm.AutonomousConsent); Assert.False(f.Vm.IsAutonomous);
+        f.Vm.SelectedTaskMode = 1; f.Vm.AutonomousConsent = true; f.Vm.StopCommand.Execute(null);
+        Assert.False(f.Vm.AutonomousConsent); Assert.False(f.Vm.ResumeConsent);
+    }
     [Fact] public void YourTurnKeepsInstructionAndFailureVisibleInCompactCard()
     {
         using var f = new Fixture();
@@ -67,13 +139,13 @@ public sealed class OnboardingTests
     {
         public Login Login = new(); public Connection Connection = new();
         public LessonController Controller; public MainViewModel Vm;
-        public Fixture(IBrowserLauncher? launcher = null, IBrowserPlanner? planner = null)
+        public Fixture(IBrowserLauncher? launcher = null, IBrowserPlanner? planner = null, IVoicePromptRecorder? voice = null)
         {
             var env = new PreviewEnvironment(); var permissions = new PermissionSupervisor();
             var pointer = new WindowsPointer(permissions,env,env);
             Controller = new(env,env,env,pointer,env,new Api(),env,env,env,permissions);
             Vm = new(Controller,Login,new("https://example.invalid","cognito","https://cognito-idp.ap-south-1.amazonaws.com/test","client","https://example.invalid","openid","http://localhost:43827/callback/","Desktop Guide","test"),
-                pointer,env,Connection,action=>action(),launcher,planner ?? new Planner());
+                pointer,env,Connection,action=>action(),launcher,planner ?? new Planner(),voice);
             Vm.Goal = "Help me with my website task";
         }
         public void Dispose() => Controller.Dispose();

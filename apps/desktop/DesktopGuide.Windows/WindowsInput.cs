@@ -170,14 +170,14 @@ public sealed class WindowsInputExecutor(PermissionSupervisor supervisor, IWindo
             if (!tracker.IsCurrentGeometry(source, frame.Geometry)) throw new SafetyException("Target changed before demonstration");
             var lease = supervisor.Consume(capability, proposal, frame, tracker.IsForegroundAndVisible(source));
             activity.IsAssistantInputActive = true;
-            void Batch(Action send)
+            void Batch(Action send, bool changesApplication = true)
             {
                 cancellation.ThrowIfCancellationRequested();
                 if (!activity.TrackingAvailable) throw new SafetyException("Input observer unavailable");
                 if (!tracker.IsCurrentGeometry(source, frame.Geometry)) throw new SafetyException("Target changed during input");
                 supervisor.ExecuteBatch(lease, frame, tracker.IsForegroundAndVisible(source), () =>
                 {
-                    dispatched = true;
+                    if (changesApplication) dispatched = true;
                     send();
                 });
             }
@@ -187,7 +187,7 @@ public sealed class WindowsInputExecutor(PermissionSupervisor supervisor, IWindo
                 frame.RequireUnmaskedPoint(action.X!.Value, action.Y!.Value);
                 var point = frame.Geometry.Map(action.X!.Value, action.Y!.Value);
                 if (!tracker.IsPointVisible(source, point.X, point.Y)) throw new SafetyException("Action target is covered");
-                Batch(() => InputNative.Move(point.X, point.Y));
+                Batch(() => InputNative.Move(point.X, point.Y), changesApplication: false);
                 // Hover can replace a control inside the same root window. Hit testing alone cannot detect that.
                 await Task.Delay(80, cancellation);
                 var afterHover = await capture.CaptureAsync(source, frame.PrivacyMasks, cancellation);
@@ -210,7 +210,9 @@ public sealed class WindowsInputExecutor(PermissionSupervisor supervisor, IWindo
             }
             else
             {
-                ushort key = action.Chord switch { "Ctrl+A" => 0x41, "Ctrl+C" => 0x43, "Ctrl+S" => 0x53, "Escape" => 0x1B, "Tab" => 9, _ => throw new SafetyException("Unsupported chord") };
+                ushort key = action.Chord switch { "Ctrl+A" => 0x41, "Ctrl+C" => 0x43, "Ctrl+S" => 0x53, "Escape" => 0x1B, "Tab" => 9,
+                    "Enter" => 0x0D, "Backspace" => 8, "Home" => 0x24, "End" => 0x23, "Left" => 0x25, "Up" => 0x26, "Right" => 0x27, "Down" => 0x28,
+                    _ => throw new SafetyException("Unsupported chord") };
                 bool control = action.Chord!.StartsWith("Ctrl", StringComparison.Ordinal);
                 Batch(() =>
                 {
@@ -226,6 +228,7 @@ public sealed class WindowsInputExecutor(PermissionSupervisor supervisor, IWindo
         }
         catch (OperationCanceledException) { return new(proposal.Id, dispatched ? "unknown" : "not_dispatched", supervisor.Epoch); }
         catch (SafetyException) when (dispatched) { return new(proposal.Id, "unknown", supervisor.Epoch); }
+        catch (SafetyException) { return new(proposal.Id, "not_dispatched", supervisor.Epoch); }
         finally
         {
             ReleaseHeldControls(); activity.IsAssistantInputActive = false; serialized.Release();

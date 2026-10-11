@@ -1,0 +1,110 @@
+{
+  "$defs": {
+    "RemoteAcknowledgement": {
+      "additionalProperties": false,
+      "properties": {
+        "command_id": {
+          "format": "uuid",
+          "title": "Command Id",
+          "type": "string"
+        },
+        "accepted": {
+          "title": "Accepted",
+          "type": "boolean"
+        },
+        "message": {
+          "default": "",
+          "maxLength": 300,
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "command_id",
+        "accepted"
+      ],
+      "title": "RemoteAcknowledgement",
+      "type": "object"
+    },
+    "RemoteStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "default": "Idle",
+          "maxLength": 40,
+          "pattern": "^[A-Za-z]+$",
+          "title": "State",
+          "type": "string"
+        },
+        "mode": {
+          "default": "guide",
+          "enum": [
+            "guide",
+            "autonomous"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "busy": {
+          "default": false,
+          "title": "Busy",
+          "type": "boolean"
+        },
+        "instruction": {
+          "default": "",
+          "maxLength": 1200,
+          "title": "Instruction",
+          "type": "string"
+        },
+        "notice": {
+          "default": "",
+          "maxLength": 600,
+          "title": "Notice",
+          "type": "string"
+        },
+        "can_resume": {
+          "default": false,
+          "title": "Can Resume",
+          "type": "boolean"
+        },
+        "can_check": {
+          "default": false,
+          "title": "Can Check",
+          "type": "boolean"
+        }
+      },
+      "title": "RemoteStatus",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "status": {
+      "$ref": "#/$defs/RemoteStatus"
+    },
+    "acknowledgement": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RemoteAcknowledgement"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "status"
+  ],
+  "title": "RemotePoll",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://desktop-guide.invalid/contracts/v1/RemotePoll.schema.json"
+}

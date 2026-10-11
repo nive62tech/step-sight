@@ -4,6 +4,8 @@ Date: 11 October 2026. Build: unsigned Windows x64 development pilot. **Full fun
 
 ## Checks that ran
 
+**r15 incremental update:** 17 focused deterministic recovery/resume/voice cases passed; Windows publish, two headless mode renders, package integrity (318 files) and deployed readiness passed. Native IRCTC and real microphone behavior remain unqualified. No additional paid model validation or broad suite was run. See [recovery-r15.md](recovery-r15.md).
+
 | Check | Result and scope |
 |---|---|
 | Deterministic suite | 95 Python tests, 88 Core/Platform tests and 39 app/auth tests (222 total); lint/contracts pass; .NET build has zero warnings/errors |

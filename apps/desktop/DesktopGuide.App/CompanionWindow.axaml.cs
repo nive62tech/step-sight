@@ -18,6 +18,9 @@ public sealed partial class CompanionWindow : Window
     {
         InitializeComponent();
         ToggleButton.Click += (_, _) => { if (expanded) Collapse(); else Expand(); };
+        BlobVoiceButton.Click += async (_, _) => { Expand(); if (observed is not null) await observed.TogglePromptVoiceCommand.ExecuteAsync(null); };
+        PromptBlobButton.Click += async (_, _) => { if (observed is not null) await observed.TogglePromptVoiceCommand.ExecuteAsync(null); };
+        BlobTypeButton.Click += (_, _) => { observed?.TypePromptCommand.Execute(null); Expand(); PromptBox.Focus(); };
         PanelButton.Click += (_, _) => PanelRequested?.Invoke();
         ShowWhereButton.Click += async (_, _) => await RunOnTask(vm => vm.ShowWhereCommand);
         FindTargetButton.Click += async (_, _) => await RunOnTask(vm => vm.FindTargetCommand);
@@ -25,6 +28,7 @@ public sealed partial class CompanionWindow : Window
         CompactCheckButton.Click += async (_, _) => await RunOnTask(vm => vm.ReobserveCommand);
         CheckButton.Click += async (_, _) => await RunOnTask(vm => vm.ReobserveCommand);
         ResumeButton.Click += async (_, _) => await RunOnTask(vm => vm.ResumeCommand);
+        CompactResumeButton.Click += async (_, _) => await RunOnTask(vm => vm.ResumeCommand);
         KeyDown += (_, e) => { if (e.Key == Key.Escape) { Collapse(); ReturnToTask?.Invoke(); e.Handled = true; } };
         Opened += (_, _) => Place();
         DataContextChanged += (_, _) =>
@@ -38,15 +42,17 @@ public sealed partial class CompanionWindow : Window
     }
     private void ModelChanged(object? sender, PropertyChangedEventArgs args)
     {
-        if (args.PropertyName is nameof(MainViewModel.HasCompactCard) or nameof(MainViewModel.HasNotice)) UpdateCompact();
+        if (args.PropertyName is nameof(MainViewModel.HasCompactCard) or nameof(MainViewModel.HasNotice) or nameof(MainViewModel.IsPaused)) UpdateCompact();
     }
     private void UpdateCompact()
     {
         CompactBody.IsVisible = !expanded && observed?.HasCompactCard == true;
         if (expanded) return;
         var hasCard = CompactBody.IsVisible;
-        var width = hasCard ? 374 : 276;
-        var height = hasCard ? (observed!.HasNotice ? 340 : 270) : 72;
+        CompanionFrame.IsVisible = expanded || hasCard;
+        BlobLauncher.IsVisible = !expanded && !hasCard;
+        var width = hasCard ? 374 : 164;
+        var height = hasCard ? (observed!.IsPaused ? 400 : observed.HasNotice ? 340 : 270) : 180;
         if (Width != width || Height != height) { Width = width; Height = height; Place(); }
     }
     private async Task RunOnTask(Func<MainViewModel, IAsyncRelayCommand> command)
@@ -56,9 +62,9 @@ public sealed partial class CompanionWindow : Window
     }
     public void Expand(bool activate = true)
     {
-        expanded = true; ExpandedBody.IsVisible = true; CompactBody.IsVisible = false; Width = 374;
+        expanded = true; ExpandedBody.IsVisible = true; CompactBody.IsVisible = false; CompanionFrame.IsVisible = true; BlobLauncher.IsVisible = false; Width = 374;
         var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
-        Height = Math.Min(660, (screen?.WorkingArea.Height ?? 800) / (screen?.Scaling ?? 1) - 32);
+        Height = Math.Min(760, (screen?.WorkingArea.Height ?? 800) / (screen?.Scaling ?? 1) - 32);
         Place(); Show(); if (activate) { Activate(); if (DataContext is MainViewModel { HasLesson: false }) PromptBox.Focus(); }
     }
     public void Collapse()

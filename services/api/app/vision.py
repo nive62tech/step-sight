@@ -69,7 +69,7 @@ class VisualResult(Contract):
     action_proposal: VisualAction | None = None
     completed: bool = False
 
-    def bind(self, observation: Observation, *, has_previous: bool) -> ProviderResult:
+    def bind(self, observation: Observation, *, has_previous: bool, autonomous: bool = False) -> ProviderResult:
         def evidence(details):
             return [Evidence(observation_id=observation.id, detail=detail) for detail in details]
 
@@ -79,9 +79,10 @@ class VisualResult(Contract):
         if has_previous and not verification:
             raise ValueError("previous step needs visual verification")
         # Apply the existing no-advance rule before constructing any next step.
-        if has_previous and not confirmed:
+        if has_previous and not confirmed and not (autonomous and verification.status in {VerificationStatus.NOT_YET, VerificationStatus.DIFFERENT_STATE}):
             return ProviderResult(step=None, verification=verification, action_proposal=None, completed=False)
-        if self.completed and (not has_previous or not confirmed):
+        completed = self.completed and not (has_previous and not confirmed)
+        if completed and (not has_previous or not confirmed):
             raise ValueError("completion requires verified previous-step evidence")
         step = None
         if self.step:
@@ -90,7 +91,7 @@ class VisualResult(Contract):
                 target=Target(geometry_id=observation.geometry_id, **self.step.target.model_dump()) if self.step.target else None)
         proposal = ActionProposal(id=uuid4(), source_observation_id=observation.id, geometry_id=observation.geometry_id,
             **self.action_proposal.model_dump()) if self.action_proposal else None
-        return ProviderResult(step=step, verification=verification, action_proposal=proposal, completed=self.completed)
+        return ProviderResult(step=step, verification=verification, action_proposal=proposal, completed=completed)
 
 
 class VisualLocation(Contract):

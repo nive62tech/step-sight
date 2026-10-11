@@ -1,0 +1,35 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "device_id": {
+      "format": "uuid",
+      "title": "Device Id",
+      "type": "string"
+    },
+    "label": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Label",
+      "type": "string"
+    },
+    "allow_autonomous": {
+      "default": false,
+      "title": "Allow Autonomous",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "device_id",
+    "label"
+  ],
+  "title": "RemoteRegistration",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://desktop-guide.invalid/contracts/v1/RemoteRegistration.schema.json"
+}

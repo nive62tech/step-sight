@@ -44,7 +44,7 @@ for (const [key, value] of Object.entries({
   LATEST_VERSION: escapeHtml(latest.version),
   LATEST_SIZE: formatSize(latest.bytes),
   RELEASE_ROWS: releaseRows(manifest),
-  RELEASE_COUNT: manifest.releases.length,
+  RELEASE_COUNT_LABEL: `${manifest.releases.length} available release${manifest.releases.length === 1 ? "" : "s"}`,
 })) {
   html = html.replaceAll(`{{${key}}}`, String(value));
 }

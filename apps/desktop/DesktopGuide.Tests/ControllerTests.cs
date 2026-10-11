@@ -6,6 +6,119 @@ namespace DesktopGuide.Tests;
 
 public sealed class ControllerTests
 {
+    [Theory] [InlineData(InteractionMode.Guide)] [InlineData(InteractionMode.Autonomous)]
+    public async Task ResumeReplacesOldManualEnglishStepAndKeepsOriginalMode(InteractionMode mode)
+    {
+        var env = new Environment { ManualStep = true, FreshResume = true, CompleteAfter = 1 }; using var c = env.Controller();
+        await c.PreviewAsync(env.Source);
+        await c.StartAsync(env.Source, "Find trains", "browser", mode, false, false, false, mode == InteractionMode.Autonomous);
+        c.PauseLocal(); env.ManualStep = false;
+        await c.ResumeAsync(mode == InteractionMode.Autonomous);
+        Assert.Equal(mode, c.Mode); Assert.Contains("resume", env.Events);
+        Assert.Equal(mode == InteractionMode.Autonomous ? 1 : 0, env.Dispatches);
+        Assert.Equal(mode == InteractionMode.Autonomous ? LessonState.Completed : LessonState.WaitingForLearner, c.State);
+        Assert.Equal("Scroll inside the notice", env.Pending!.Instruction);
+    }
+    [Fact]
+    public async Task ObscuredTargetGetsFreshModelRecoveryAndScrollBeforeAnotherClick()
+    {
+        var env = new Environment { BannerRecovery = true, CompleteAfter = 1 }; using var c = env.Controller();
+        await c.PreviewAsync(env.Source);
+        await c.StartAsync(env.Source, "Find trains", "browser", InteractionMode.Autonomous, false, false, false, true);
+        Assert.Equal(new[] { "start", "recover", "autonomous_result" }, env.Events);
+        Assert.Equal(new[] { "scroll" }, env.DispatchedKinds);
+        Assert.Equal(LessonState.Completed, c.State);
+    }
+    [Theory] [InlineData(false)] [InlineData(true)]
+    public async Task ResumeDrainsCancelledAnalysisAndStopStillWins(bool stop)
+    {
+        var env = new Environment { BlockTurn = true, CompleteAfter = 1 }; using var c = env.Controller();
+        await c.PreviewAsync(env.Source);
+        var starting = c.StartAsync(env.Source, "Find trains", "browser", InteractionMode.Autonomous, false, false, false, true);
+        await env.TurnEntered.Task.WaitAsync(TimeSpan.FromSeconds(2)); c.PauseLocal();
+        var resuming = c.ResumeAsync(true);
+        Assert.False(resuming.IsCompleted); Assert.Equal(1, env.Turns); Assert.False(env.AutonomousControlActive);
+        if (stop) c.StopLocal();
+        env.ContinueTurn.TrySetResult(true);
+        await Task.WhenAll(starting, resuming).WaitAsync(TimeSpan.FromSeconds(4));
+        Assert.Equal(stop ? LessonState.Stopped : LessonState.Completed, c.State);
+        Assert.Equal(stop ? 0 : 1, env.Dispatches);
+        Assert.Equal(!stop, env.Events.Contains("resume"));
+    }
+    [Fact]
+    public async Task UnavailableTargetRecoveryIsBoundedWithoutAnyInput()
+    {
+        var env = new Environment { MissingTarget = true, Verify = "NOT_YET" }; using var c = env.Controller();
+        await c.PreviewAsync(env.Source);
+        await c.StartAsync(env.Source, "Find trains", "browser", InteractionMode.Autonomous, false, false, false, true);
+        Assert.Equal(new[] { "start", "recover", "recover" }, env.Events);
+        Assert.Equal(0, env.Dispatches); Assert.Equal(LessonState.Paused, c.State);
+    }
+    [Fact]
+    public async Task AutonomousRunsActionsAndVerifiesEachBeforeCompleting()
+    {
+        var env = new Environment { CompleteAfter = 2 }; using var c = env.Controller();
+        await c.PreviewAsync(env.Source);
+        await c.StartAsync(env.Source, "Open preferences", "browser", InteractionMode.Autonomous, false, false, false, true);
+        Assert.Equal("autonomous", env.Session.Mode); Assert.Equal(2, env.Dispatches);
+        Assert.Equal(new[] { "start", "autonomous_result", "autonomous_result" }, env.Events);
+        Assert.Equal(LessonState.Completed, c.State); Assert.False(env.AutonomousControlActive);
+        Assert.Throws<SafetyException>(() => env.Permissions.RequireObservation(env.Source.ScopeId));
+        Assert.Equal(0, env.BrowserLookups);
+    }
+    [Fact]
+    public async Task AutonomousCannotStartWithoutSeparateTaskConsent()
+    {
+        var env = new Environment(); using var c = env.Controller(); await c.PreviewAsync(env.Source);
+        await Assert.ThrowsAsync<SafetyException>(() => c.StartAsync(env.Source, "Open preferences", "browser", InteractionMode.Autonomous, false, false, false));
+        Assert.Equal(0, env.Turns); Assert.Equal(0, env.Dispatches);
+    }
+    [Theory] [InlineData("manual")] [InlineData("stale")] [InlineData("timeout")] [InlineData("pixels")]
+    public async Task AutonomousUnsafeOrUnavailableStepHandsBackControl(string issue)
+    {
+        var env = new Environment { ManualStep = issue == "manual", InvalidEvidence = issue == "stale", ServiceTimeout = issue == "timeout", ChangeBeforeDispatch = issue == "pixels" };
+        using var c = env.Controller(); await c.PreviewAsync(env.Source);
+        await c.StartAsync(env.Source, "Open preferences", "browser", InteractionMode.Autonomous, false, false, false, true);
+        Assert.Equal(LessonState.Paused, c.State); Assert.Equal(0, env.Dispatches);
+        Assert.False(env.AutonomousControlActive); Assert.False(env.ObservationEnabled);
+        Assert.InRange(env.Turns, 1, 3);
+    }
+    [Theory] [InlineData("NOT_YET")] [InlineData("DIFFERENT_STATE")] [InlineData("UNCERTAIN")]
+    public async Task UnknownDispatchIsVerifiedOnceAndNeverRetried(string verification)
+    {
+        var env = new Environment { Outcome = "unknown", Verify = verification }; using var c = env.Controller();
+        await c.PreviewAsync(env.Source);
+        await c.StartAsync(env.Source, "Open preferences", "browser", InteractionMode.Autonomous, false, false, false, true);
+        Assert.Equal(1, env.Dispatches); Assert.Equal(2, env.Turns); Assert.Equal(LessonState.Paused, c.State);
+    }
+    [Fact]
+    public async Task UnchangedScreenHasABoundedActionLoop()
+    {
+        var env = new Environment { Verify = "NOT_YET" }; using var c = env.Controller(); await c.PreviewAsync(env.Source);
+        await c.StartAsync(env.Source, "Open preferences", "browser", InteractionMode.Autonomous, false, false, false, true);
+        Assert.Equal(2, env.Dispatches); Assert.Equal(3, env.Turns); Assert.Equal(LessonState.Paused, c.State);
+    }
+    [Theory] [InlineData(false)] [InlineData(true)]
+    public async Task StopOrPhysicalTakeoverRejectsLateAutonomousPlan(bool takeover)
+    {
+        var env = new Environment { BlockTurn = true }; using var c = env.Controller(); await c.PreviewAsync(env.Source);
+        var start = c.StartAsync(env.Source, "Open preferences", "browser", InteractionMode.Autonomous, false, false, false, true);
+        await env.TurnEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        if (takeover) env.RaiseActivity(); else c.StopLocal();
+        env.ContinueTurn.TrySetResult(true); await start;
+        Assert.Equal(takeover ? LessonState.Paused : LessonState.Stopped, c.State);
+        Assert.Equal(0, env.Dispatches); Assert.False(env.AutonomousControlActive);
+    }
+    [Fact]
+    public async Task AutonomousResumeNeedsFreshConsentAndCanFinishAfterManualStep()
+    {
+        var env = new Environment { ManualStep = true, CompleteAfter = 1 }; using var c = env.Controller();
+        await c.PreviewAsync(env.Source);
+        await c.StartAsync(env.Source, "Open preferences", "browser", InteractionMode.Autonomous, false, false, false, true);
+        await c.ResumeAsync(); Assert.Equal(LessonState.Paused, c.State); Assert.Equal(0, env.Dispatches);
+        env.ManualStep = false; await c.ResumeAsync(true);
+        Assert.Equal(LessonState.Completed, c.State); Assert.Equal(1, env.Dispatches);
+    }
     private sealed class Environment : IScreenCapture, IWindowTracker, IUserActivityObserver, IPointerGuide, IInputExecutor,
         IGuidanceApiClient, ILocalSessionStore, IAudioCapture, ISpeechPlayback, IBrowserTargetResolver
     {
@@ -16,6 +129,13 @@ public sealed class ControllerTests
         public GuidanceStep? Pending;
         public string Verify = "CONFIRMED";
         public bool BlockTurn;
+        public int CompleteAfter;
+        public bool ManualStep, InvalidEvidence, ChangeBeforeDispatch;
+        public bool BannerRecovery, FreshResume;
+        public List<string> DispatchedKinds = [];
+        public string Outcome = "dispatched";
+        public bool AutonomousControlActive { get; set; }
+        public List<string> Events = [];
         public bool ServiceTimeout;
         public bool WaitingForPage;
         public bool MissingTarget, LocateMissingTarget, ChangeLocatedInstruction;
@@ -39,7 +159,8 @@ public sealed class ControllerTests
         public int PointerMoves, Dispatches, Turns, VisualMarkers, CaptureStops;
         public void StopCapture() => CaptureStops++;
         public Task ShowVisualAsync(ScreenFrame frame, Target target, CaptureSource source, CancellationToken cancellation)
-        { cancellation.ThrowIfCancellationRequested(); Permissions.RequireObservation(source.ScopeId); ShownTarget = target; VisualMarkers++; return Task.CompletedTask; }
+        { cancellation.ThrowIfCancellationRequested(); Permissions.RequireObservation(source.ScopeId); ShownTarget = target; VisualMarkers++;
+            if (ChangeBeforeDispatch) Frame = Frame with { PixelDigest = Guid.NewGuid().ToString() }; return Task.CompletedTask; }
         public bool Foreground = true;
         public Environment()
         {
@@ -72,8 +193,8 @@ public sealed class ControllerTests
         public Task<ActionReceipt> ExecuteAsync(LocalCapability capability, ActionProposal proposal, ScreenFrame frame, CaptureSource source, CancellationToken cancellation)
         {
             var lease = Permissions.Consume(capability, proposal, frame, true);
-            Permissions.ExecuteBatch(lease, frame, true, () => Dispatches++);
-            return Task.FromResult(new ActionReceipt(proposal.Id, "dispatched", Permissions.Epoch));
+            Permissions.ExecuteBatch(lease, frame, true, () => { Dispatches++; DispatchedKinds.Add(proposal.Action.Kind); });
+            return Task.FromResult(new ActionReceipt(proposal.Id, Outcome, Permissions.Epoch));
         }
         public void ReleaseHeldControls() { }
         public Task<SessionView> CreateAsync(SessionCreate request, CancellationToken cancellation)
@@ -84,7 +205,7 @@ public sealed class ControllerTests
         public Task<SessionView> GetAsync(Guid session, CancellationToken cancellation) => Task.FromResult(Session with { PendingStep = Pending });
         public async Task<TurnResponse> TurnAsync(Guid session, TurnRequest request, ScreenFrame frame, CancellationToken cancellation)
         {
-            Turns++; TurnEntered.TrySetResult(true);
+            Turns++; Events.Add(request.EventKind); TurnEntered.TrySetResult(true);
             if (ServiceTimeout) throw new TaskCanceledException("Synthetic HTTP deadline");
             if (BlockTurn) await ContinueTurn.Task; // Deliberately ignore cancellation to exercise late-response defense.
             if (request.EventKind == "locate")
@@ -101,10 +222,25 @@ public sealed class ControllerTests
                 new("rectangle", "normalized_source_image", frame.Geometry.Id, new(.5, .5, .6, .6), "Settings"), "click", [new("visible_text", "Settings")], [], [new(frame.Observation.Id, "Settings visible")], []);
             if (MissingTarget) step = step with { Target = null };
             if (WaitingForPage) step = step with { Target = null, ExpectedUserAction = "wait", Instruction = "Wait for the dashboard to load" };
-            Pending = step; Session = Session with { SessionVersion = Session.SessionVersion + 1, PendingStep = step };
+            if (ManualStep) step = step with { ExpectedUserAction = "manual", Instruction = "Complete CAPTCHA yourself" };
+            if (InvalidEvidence) step = step with { SourceObservationId = Guid.NewGuid() };
             var proposal = new ActionProposal(Guid.NewGuid(), frame.Observation.Id, frame.Geometry.Id, new("click", .55, .55, "left"), "Open practice Settings", "low", false);
-            return new(1, session, Session.SessionVersion, Guid.NewGuid(), frame.Observation.Id, "gemini", step,
-                request.PreviousStep is null ? null : new(Verify, [new(frame.Observation.Id, "Visible state")], Verify == "CONFIRMED" ? [] : ["Expected state"], "Return to Settings", "gemini"), proposal, false);
+            if (BannerRecovery && request.EventKind == "start") step = step with { Target = null, Uncertainty = ["An information banner covers the target"] };
+            if (BannerRecovery && request.EventKind == "recover")
+            {
+                step = step with { Instruction = "Scroll down inside the payment information banner", ExpectedUserAction = "scroll", Postconditions = [new("visible_text", "Bottom of notice")] };
+                proposal = proposal with { Action = new("scroll", .55, .55, Ticks: -2), Effect = "Reveal the rest of the information banner" };
+            }
+            if (FreshResume && !ManualStep)
+            {
+                step = step with { Instruction = "Scroll inside the notice", ExpectedUserAction = "scroll" };
+                proposal = proposal with { Action = new("scroll", .55, .55, Ticks: -2), Effect = "Reveal the next control" };
+            }
+            Pending = step; Session = Session with { SessionVersion = Session.SessionVersion + 1, PendingStep = step };
+            var verification = BannerRecovery && request.EventKind == "recover" ? "NOT_YET" : Verify;
+            var complete = CompleteAfter > 0 && Dispatches >= CompleteAfter && Verify == "CONFIRMED";
+            return new(1, session, Session.SessionVersion, Guid.NewGuid(), frame.Observation.Id, "gemini", complete ? null : step,
+                request.PreviousStep is null || (FreshResume && request.EventKind == "resume") ? null : new(verification, [new(frame.Observation.Id, "Visible state")], verification == "CONFIRMED" ? [] : ["Expected state"], "Return to Settings", "gemini"), complete || step.Target is null ? null : proposal, complete);
         }
         public Task<SessionView> IntentAsync(Guid session, string intent, int version, CancellationToken cancellation)
         { Session = Session with { State = intent.ToUpperInvariant(), SessionVersion = version + 1 }; return Task.FromResult(Session); }

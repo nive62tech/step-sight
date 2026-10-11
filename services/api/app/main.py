@@ -20,6 +20,7 @@ from app.config import Settings, get_settings
 from app.contracts import (
     BrowserPlanRequest,
     BrowserPlanResponse,
+    ClickAction,
     GuidanceStep,
     LearnerEvent,
     ProviderResult,
@@ -49,6 +50,7 @@ from app.persistence import (
     now,
 )
 from app.providers import GeminiProvider, MockProvider, ProviderUnavailable
+from app.remote import install_remote
 
 
 def create_app(settings: Settings | None = None, provider=None):
@@ -76,6 +78,7 @@ def create_app(settings: Settings | None = None, provider=None):
             cleanup()
 
     def cleanup():
+        app.state.remote.cleanup()
         cutoff = now() - timedelta(days=settings.session_history_retention_days)
         transient_cutoff = now() - timedelta(hours=1)
         with db_factory() as db:
@@ -120,6 +123,7 @@ def create_app(settings: Settings | None = None, provider=None):
     app.state.provider = provider
     app.state.auth = auth
     app.state.contexts = contexts
+    install_remote(app, settings)
 
     @app.middleware("http")
     async def limits_and_headers(request: Request, call_next):
@@ -145,6 +149,11 @@ def create_app(settings: Settings | None = None, provider=None):
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
+        if request.url.path.startswith("/control"):
+            response.headers["Content-Security-Policy"] = ("default-src 'none'; script-src 'self'; style-src 'self'; "
+                "img-src 'self'; font-src 'self'; connect-src 'self' " + settings.cognito_domain + "; "
+                "base-uri 'none'; frame-ancestors 'none'; form-action 'none'; object-src 'none'")
+            response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), display-capture=()"
         return response
 
     @app.exception_handler(RequestValidationError)
@@ -213,8 +222,8 @@ def create_app(settings: Settings | None = None, provider=None):
                 record_id = record.id
         started = time.monotonic()
         try:
-            async with provider_slots:
-                async with asyncio.timeout(max(.1, min(settings.provider_timeout_seconds, deadline - time.monotonic()))):
+            async with asyncio.timeout(max(.001, min(settings.provider_timeout_seconds, deadline - time.monotonic()))):
+                async with provider_slots:
                     result, usage = await call(repair)
             with db_factory() as db:
                 prices = (.30, 2.50) if settings.gemini_computer_locator_enabled and model == settings.gemini_locator_model else (settings.input_price_per_million, settings.output_price_per_million)
@@ -234,8 +243,8 @@ def create_app(settings: Settings | None = None, provider=None):
                 raise ProviderUnavailable("timeout", retryable=True) from None
             raise
 
-    async def accounted_call(owner_id, turn_id, call, model):
-        deadline = time.monotonic() + settings.provider_timeout_seconds + 5
+    async def accounted_call(owner_id, turn_id, call, model, deadline=None):
+        deadline = deadline or (time.monotonic() + settings.provider_timeout_seconds + 5)
         transient_retries, repaired, attempt = 0, False, 0
         while True:
             try:
@@ -343,6 +352,8 @@ def create_app(settings: Settings | None = None, provider=None):
                     raise HTTPException(409, "session is not observing; fresh local resume required")
                 if str(obs.scope_id) != row.scope_id:
                     raise HTTPException(409, "capture scope mismatch")
+                if body.event_kind in {"autonomous_result", "recover"} and row.mode != "autonomous":
+                    raise HTTPException(409, "autonomous result requires an autonomous session")
                 context = contexts.get(sid_text)
                 if context is None:
                     if not row.saved_progress:
@@ -362,12 +373,19 @@ def create_app(settings: Settings | None = None, provider=None):
                 db.commit()
                 turn_id, owner_id, version, lesson_id = claim.id, row.owner_id, row.version, row.lesson_id
                 lesson_context = lessons.get(lesson_id) | {"verified_milestones": row.completed_steps,
-                    "language": row.language, "detail_level": row.detail_level}
+                    "language": row.language, "detail_level": row.detail_level, "interaction_mode": row.mode}
+                autonomous = row.mode == "autonomous"
+                replanning = body.event_kind == "resume"
+                inference_turn = body.model_copy(update={"previous_step": None}) if replanning else body
+                if replanning and previous:
+                    lesson_context["resume_context"] = {"earlier_instruction": previous["instruction"],
+                        "earlier_uncertainty": previous.get("uncertainty", []), "progress_claimed": False}
             try:
                 inference_started = time.monotonic()
+                inference_deadline = inference_started + settings.provider_timeout_seconds + 5
                 async def infer(repair):
                     if not locating:
-                        return await provider.guide(context["goal"], lesson_context, body, image, repair=repair)
+                        return await provider.guide(context["goal"], lesson_context, inference_turn, image, repair=repair)
                     current = GuidanceStep.model_validate(previous)
                     location, usage = await provider.locate(context["goal"], current, obs, image, repair=repair)
                     # The model can change grounding only, never the instruction, goal, progress or input authority.
@@ -375,7 +393,39 @@ def create_app(settings: Settings | None = None, provider=None):
                         "target": location.target, "evidence": location.evidence, "uncertainty": location.uncertainty})
                     return ProviderResult(step=located), usage
                 result = await accounted_call(owner_id, turn_id,
-                    infer, settings.gemini_locator_model if locating and settings.gemini_computer_locator_enabled else settings.gemini_guidance_model if locating or not body.previous_step else settings.gemini_verification_model)
+                    infer, settings.gemini_locator_model if locating and settings.gemini_computer_locator_enabled else settings.gemini_guidance_model if locating or not inference_turn.previous_step else settings.gemini_verification_model,
+                    deadline=inference_deadline)
+                if replanning:
+                    # Resume establishes a new grounded next action; it is not evidence
+                    # that the old manual/banner instruction was completed.
+                    result.verification, result.completed = None, False
+                # Each autonomous click is grounded by the dedicated coordinate tool.
+                # Calls have separate reservations and share the same turn deadline.
+                if autonomous and not locating and result.step and result.action_proposal and result.action_proposal.action.kind == "click":
+                    proposed = result.action_proposal
+                    if (not settings.gemini_computer_locator_enabled or proposed.risk != "low" or proposed.provider_confirmation_required
+                            or result.step.expected_user_action != "click" or result.step.uncertainty
+                            or (result.verification and result.verification.status == VerificationStatus.UNCERTAIN)):
+                        result.action_proposal = None
+                    elif time.monotonic() + 1 >= inference_deadline:
+                        result.action_proposal = None
+                        result.step.uncertainty.append("Insufficient time to locate this click. Reobserve before acting.")
+                    else:
+                        location = await accounted_call(owner_id, turn_id,
+                            lambda repair: provider.locate(context["goal"], result.step, obs, image, repair=repair),
+                            settings.gemini_locator_model, deadline=inference_deadline)
+                        if (location.source_observation_id != obs.id or any(e.observation_id != obs.id for e in location.evidence)
+                                or (location.target and location.target.geometry_id != obs.geometry_id)):
+                            raise HTTPException(502, "locator returned stale evidence")
+                        result.step.target = location.target
+                        result.step.uncertainty.extend(location.uncertainty)
+                        if location.target is None and not result.step.uncertainty:
+                            result.step.uncertainty.append("The requested click target is not currently visible. Reconsider the visible page before acting.")
+                        if location.target is None or location.uncertainty:
+                            result.action_proposal = None
+                        else:
+                            b = location.target.bounds
+                            result.action_proposal = proposed.model_copy(update={"action": ClickAction(kind="click", x=(b.left+b.right)/2, y=(b.top+b.bottom)/2)})
                 inference_ms = round((time.monotonic() - inference_started) * 1000)
                 validation_started = time.monotonic()
                 # Repeat critical grounding checks independent of model schema success.
@@ -393,8 +443,10 @@ def create_app(settings: Settings | None = None, provider=None):
                 ):
                     raise HTTPException(502, "provider returned incompatible proposal")
                 confirmed = result.verification and result.verification.status == VerificationStatus.CONFIRMED
-                if body.previous_step and not confirmed and not locating:
+                if body.previous_step and not confirmed and not locating and not replanning and not (autonomous and result.verification and result.verification.status in {VerificationStatus.NOT_YET, VerificationStatus.DIFFERENT_STATE}):
                     result.step, result.action_proposal, result.completed = None, None, False
+                if body.previous_step and not confirmed:
+                    result.completed = False
                 if result.completed and (not body.previous_step or not confirmed):
                     raise HTTPException(502, "completion lacks verified final evidence")
                 with db_factory() as db:
@@ -502,7 +554,18 @@ def create_app(settings: Settings | None = None, provider=None):
 
     @app.post("/v1/sessions/{sid}/resume", response_model=SessionView)
     async def resume(sid: UUID, body: SessionIntent, request: Request):
-        return await intent(sid, body, request, "OBSERVING")
+        # Invalidate the old turn immediately, then wait for it to release the provider
+        # lock. A client-side cancellation does not necessarily stop server inference.
+        resumed = await intent(sid, body, request, "OBSERVING")
+        try:
+            async with asyncio.timeout(settings.provider_timeout_seconds + 10):
+                async with locks.setdefault(str(sid), asyncio.Lock()):
+                    with db_factory() as db:
+                        row = owned_session(db, request, sid)
+                        require_version(row, resumed.session_version)
+                        return view(row)
+        except TimeoutError:
+            raise HTTPException(409, "previous analysis is still ending; resume again") from None
 
     @app.post("/v1/sessions/{sid}/stop", response_model=SessionView)
     async def stop(sid: UUID, body: SessionIntent, request: Request):

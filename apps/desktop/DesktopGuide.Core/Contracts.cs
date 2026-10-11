@@ -69,7 +69,7 @@ public sealed record InputAction(string Kind,
             case "type" when !string.IsNullOrEmpty(Text) && Text.Length <= 256 && X is null && Y is null && Button is null && Ticks is null && Chord is null:
                 if (Text.Any(char.IsControl)) throw new SafetyException("Text cannot contain commands or control characters");
                 break;
-            case "key_chord" when Chord is "Ctrl+A" or "Ctrl+C" or "Ctrl+S" or "Escape" or "Tab" && X is null && Y is null && Button is null && Ticks is null && Text is null:
+            case "key_chord" when Chord is "Ctrl+A" or "Ctrl+C" or "Ctrl+S" or "Escape" or "Tab" or "Enter" or "Backspace" or "Home" or "End" or "Left" or "Right" or "Up" or "Down" && X is null && Y is null && Button is null && Ticks is null && Text is null:
                 break;
             default: throw new SafetyException("Unsupported input primitive");
         }

@@ -17,6 +17,7 @@ class Mode(StrEnum):
     GUIDE = "guide"
     DEMONSTRATE = "demonstrate"
     PRACTICE = "practice"
+    AUTONOMOUS = "autonomous"
 
 
 class VerificationStatus(StrEnum):
@@ -101,7 +102,7 @@ class TypeAction(Contract):
 
 class KeyAction(Contract):
     kind: Literal["key_chord"]
-    chord: Literal["Ctrl+A", "Ctrl+C", "Ctrl+S", "Escape", "Tab"]
+    chord: Literal["Ctrl+A", "Ctrl+C", "Ctrl+S", "Escape", "Tab", "Enter", "Backspace", "Home", "End", "Left", "Right", "Up", "Down"]
 
 
 Action = Annotated[ClickAction | ScrollAction | TypeAction | KeyAction, Field(discriminator="kind")]
@@ -167,7 +168,7 @@ class TurnRequest(Contract):
     request_id: UUID
     session_version: int = Field(ge=0)
     observation: Observation
-    event_kind: Literal["start", "activity", "i_did_this", "reobserve", "demonstration_result", "locate"]
+    event_kind: Literal["start", "activity", "i_did_this", "reobserve", "resume", "recover", "demonstration_result", "autonomous_result", "locate"]
     previous_step: GuidanceStep | None = None
 
 

@@ -46,7 +46,14 @@ public sealed class GuidanceMarker : Canvas
             Child = new StackPanel { Spacing = 6, Children = { action, comment } }
         };
         Children.Add(ripple); Children.Add(ring); Children.Add(cursor); Children.Add(bubble);
-        SetTarget(28, 50, "Open Settings to change your workspace.", "click"); Animate(0, true);
+        SetMode(false); SetTarget(28, 50, "Open Settings to change your workspace.", "click"); Animate(0, true);
+    }
+    public void SetMode(bool autonomous)
+    {
+        ripple.BorderBrush = ring.BorderBrush = bubble.BorderBrush = Brush.Parse(autonomous ? "#EF5270" : "#48CA83");
+        ring.Background = Brush.Parse(autonomous ? "#29EF5270" : "#2948CA83");
+        cursor.Fill = bubble.Background = Brush.Parse(autonomous ? "#491524" : "#123F2A");
+        comment.Foreground = Brush.Parse(autonomous ? "#FFE4EA" : "#DDF7E8");
     }
     public void SetTarget(double x, double y, string instruction, string expectedAction, bool showCallout = true)
     {
@@ -78,6 +85,7 @@ public sealed class OverlayWindow : Window
     private readonly DispatcherTimer animation;
     private readonly System.Diagnostics.Stopwatch clock = new();
     private bool reducedMotion;
+    public void SetMode(bool autonomous) => marker.SetMode(autonomous);
     public OverlayWindow()
     {
         Width = 340; Height = 140; CanResize = false; ShowInTaskbar = false; Topmost = true;

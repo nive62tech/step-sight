@@ -1,29 +1,28 @@
-# Opt-in autonomous tasks
+# Guided and autonomous tasks
 
-Requested 11 October 2026, after the live-guidance reliability/cursor release. This is an extension of the original guide-first specification, not a claim that autonomous control already ships.
+Implemented in the 11 October 2026 r14 pilot. The user selects **Guided ? I click** or **Autonomous ? agent acts** on the prompt screen or floating companion. Guided is the default. Autonomous control requires a separate, unchecked task consent box; sign-in, changing modes, saved progress and cloud responses cannot grant control.
 
-## User flow
+## Shipped behavior
 
-The prompt surface offers **Guide me** and **Do it for me**. Guide remains the default. Autonomous control is a fresh, explicit grant for the current prompt and selected/opened application. It is never restored from saved progress or inferred from signing in. The grant describes live image sharing and the permitted actions. The companion always shows what the agent is doing and a working Stop button. User takeover, lock, focus/scope loss, a failed input observer, cancellation, expiry or action limit interrupts execution.
+- The existing Gemini intent planner can open a browser and starting website from the prompt. For an existing Windows application, summon the companion with Ctrl+Alt+Space or select and preview its window.
+- An autonomous grant covers that one window for 10 minutes or 30 dispatch attempts. The controller observes, proposes one action, validates it locally, executes it and requests a fresh screenshot to verify the outcome before continuing.
+- Gemini 3.1 Flash-Lite plans and verifies. Each autonomous click receives a second coordinate proposal from the dedicated Gemini 3.5 Flash-Lite computer-use locator. Both inference calls share the turn deadline and are individually usage-accounted. Neither model executes tools directly.
+- Decisions use screenshots only. Browser UIA/DOM inspection remains disabled. There are no site-specific click scripts or stored target coordinates.
+- Supported inputs are left click, bounded vertical scrolling, bounded Unicode text, and allowlisted navigation keys. Typing requires an identified focused field. Every action uses an exact single-use local capability bound to the image, geometry, target, scope and current permission epoch.
+- Moving the physical mouse or typing pauses the agent. Stop revokes permissions immediately, cancels pending work, hides the marker, ends capture and releases held controls. Focus loss, lock, unavailable input observer, exhausted allowance, changed imagery or model failure also disarm input. Resume needs fresh local consent.
+- Login, CAPTCHA, credentials, security prompts, billing, purchases, booking confirmation, deletion, deployment and other external commitments hand control back to the user. Local risk checks supplement model risk classification; they are not a complete defense against adversarial interfaces.
+- Unknown dispatch outcomes are observed once and cannot be retried unless positively verified. Known no-dispatch failures and repeated identical actions on unchanged pixels have finite retry limits. Recovery can choose a new step on NOT_YET/DIFFERENT_STATE without crediting the previous step as complete; UNCERTAIN pauses.
 
-The first device action is setting a supported laptop display's brightness to an exact percentage. The browser path opens the requested public HTTPS site and repeatedly observes, proposes one action, validates, executes and verifies the visible outcome. IRCTC availability is a search task: collect the user's route, travel date/time window and class, inspect live results, and report the observed availability. Missing details require a question. CAPTCHA/login stay interactive; booking/payment are separate decisions and are not implied by checking availability.
+## Scope and remaining work
 
-## Implementation
+This is autonomous execution within one selected/opened window, not unrestricted control across the whole desktop. The prompt launcher still launches browsers; native apps must currently be opened and selected/summoned first. An already-open Settings window can receive screenshot-based navigation proposals, but exact brightness adjustment and real IRCTC availability searches have not been qualified end to end. No native brightness API or programmatic website inspection is used.
 
-1. Add an autonomous session mode to shared contracts, generated schemas, desktop state and backend lesson context. Keep remote proposals separate from local authority.
-2. Add a task-scoped local grant with expiry and an action budget. Each dispatch receives an immutable, single-use capability bound to the current image, window, geometry, epoch and exact action. Existing one-action demonstration approvals remain separate.
-3. Run one serialized observe/plan/act/verify loop. No next action until the previous result is checked; do not blindly retry a click with unknown outcome. Changed screenshots require a fresh plan. A recoverable failure shows the reason and releases control.
-4. Permit bounded visual click/scroll/text/navigation primitives in the granted window. Keep sensitive, irreversible or externally committing operations outside ordinary navigation. Do not add arbitrary shell execution, elevation, hidden background browsing, downloaded-code execution or secret extraction.
-5. Add a typed brightness service behind a Platform interface, implemented in Windows using the OS brightness API. Validate 0–100, select active supported displays, read back the result, and report unsupported hardware honestly. Unit tests use a fake device; do not change the developer's brightness as an incidental test.
-6. Add the IRCTC starting-site intent without a fixed walkthrough. The user subsequently authorized programmatic browser inspection/control to improve accuracy. Use live screenshots together with available browser accessibility/DOM information, never stored target coordinates or evaluation oracles. The read-only Windows UIA target resolver is now implemented for Guide mode; autonomous browser actions still need the task-grant and single-use capability path above. The task never claims confirmed ticket availability without a matching visible train/date/class result.
-7. Extend both the main prompt surface and floating companion with mode choice, explicit control grant, live action status, Pause/Stop and fresh consent on resume. Keep guide-mode wording and behavior unchanged.
-8. Test grant isolation, expiry/replay, late responses after Stop, focus/window changes, manual takeover, failed/unknown dispatch, no false completion and unsupported brightness devices. Render both modes and their error/recovery states.
-9. Package the Windows build and deploy the API only after the reliability release is verified. Report deterministic, synthetic cloud and native end-to-end evidence separately. Native autonomous-input tests need their own disposable-session approval; the earlier one-click consent has already been used.
+New windows, elevation, terminal commands, clipboard extraction, arbitrary shell execution, file uploads, drag gestures and secrets are outside this pilot's autonomous primitives. A task that needs an unsupported action or a new window pauses for the user. Wider application launch/window handoff requires another design and test pass.
 
-## Completion checks
+## Evidence
 
-- Guide mode never performs clicks or typing without its existing separate grants.
-- An opted-in browser task can execute ordinary visible navigation and stop before ungranted actions.
-- A brightness task changes only the requested supported display setting and verifies the reported value.
-- Stop prevents any queued/new dispatch and releases held input; stale output never resumes control.
-- Actual IRCTC availability and real Windows task qualification are reported only after end-to-end observation, not inferred from unit tests or synthetic pictures.
+The r14 release passes 108 Python, 109 Core/Platform and 40 app/auth tests (257 total), with a clean desktop build. Fake-input tests cover action/verify/complete, guided-mode isolation, missing consent, grant expiry/budget/replay/payload mutation, stale evidence, changed pixels, manual handoff, unknown outcomes, repeated non-progress, late responses after Stop/takeover, and fresh consent on resume. API tests cover coordinate replacement, separate accounting, idempotency, stale grounding and recovery without false progress. Headless Avalonia renders cover the autonomous prompt and paused companion.
+
+The candidate ran a single real Gemini call from the AWS pilot against a generated synthetic settings image: an autonomous low-risk click proposal and current-image binding passed in 5,567 ms. The native coordinate locator was separately qualified on a synthetic browser image in r12. The integrated two-model route is tested with fake providers; this release did not execute real mouse or keyboard input. Native autonomous workflows, adversarial UI, focus/hover timing, multi-monitor behavior and extended typing/Stop races remain unqualified. The earlier disposable one-click consent was for a previous smoke test and was not reused.
+
+Artifacts: `artifacts/windows-autonomous`, `artifacts/DesktopGuide-windows-x64-autonomous-pilot.zip`, and `artifacts/ui-qa/autonomous`. The package is unsigned and starts disarmed.

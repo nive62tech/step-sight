@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     gemini_locator_model: Literal["gemini-3.5-flash-lite"] = "gemini-3.5-flash-lite"
     cognito_issuer: str = ""
     cognito_client_id: str = ""
+    cognito_domain: str = ""
     cognito_scopes: str = "desktop-guide/lessons"
     speech_output_enabled: bool = False
     tts_voice_name: str = ""
@@ -43,6 +44,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def safe_configuration(self):
+        if self.cognito_domain:
+            import re
+            if not re.fullmatch(r"https://[a-z0-9-]+\.auth\.[a-z0-9-]+\.amazoncognito\.com", self.cognito_domain):
+                raise ValueError("invalid hosted sign-in domain")
         if self.raw_media_persistence or self.debug_media_enabled or self.gemini_computer_use_enabled:
             raise ValueError("raw media storage and native computer use are not supported in this pilot build")
         if self.app_env == "production":

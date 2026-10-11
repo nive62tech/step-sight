@@ -4,7 +4,8 @@
       "enum": [
         "guide",
         "demonstrate",
-        "practice"
+        "practice",
+        "autonomous"
       ],
       "title": "Mode",
       "type": "string"

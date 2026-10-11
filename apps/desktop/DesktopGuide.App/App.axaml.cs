@@ -43,6 +43,7 @@ public sealed partial class App : Application
             registrations.AddSingleton<IAccountConnection, CloudConnection>(); registrations.AddSingleton<GuidanceApiClient>();
             registrations.AddSingleton<IGuidanceApiClient>(s => s.GetRequiredService<GuidanceApiClient>());
             registrations.AddSingleton<IBrowserPlanner>(s => s.GetRequiredService<GuidanceApiClient>());
+            registrations.AddSingleton<IVoicePromptRecorder, VoicePromptRecorder>();
             registrations.AddSingleton<LessonController>(); registrations.AddSingleton<MainViewModel>();
             var browserAuthCheck = Program.Arguments.Contains("--browser-auth-check");
             var renderPreview = Program.Arguments.Contains("--render-preview") || browserAuthCheck;
@@ -73,6 +74,7 @@ public sealed partial class App : Application
             }
             services = registrations.BuildServiceProvider();
             var vm = services.GetRequiredService<MainViewModel>();
+            if (!renderPreview) vm.AttachRemote(services.GetRequiredService<GuidanceApiClient>(), config.ApiOrigin);
             var requestedLesson = UiCheck.Argument("--lesson", "");
             if (vm.LessonChoices.FirstOrDefault(l => l.Id == requestedLesson) is { } initialLesson) vm.SelectedLessonChoice = initialLesson;
             var window = new MainWindow { DataContext = vm, Title = config.BrandName };
@@ -144,6 +146,11 @@ public sealed partial class App : Application
             pointer.TargetHidden += () => Dispatcher.UIThread.Post(() => { overlay.Hide(); highlight.Hide(); companion.ClearTarget(); });
             vm.PropertyChanged += (_, args) =>
             {
+                if (args.PropertyName == nameof(MainViewModel.IsAutonomous))
+                {
+                    overlay.SetMode(vm.IsAutonomous); highlight.SetMode(vm.IsAutonomous);
+                    if (tray is not null) { tray.Icon = CreateTrayIcon(vm.IsAutonomous); tray.ToolTipText = config.BrandName + " - " + vm.ModeLabel + " - Stop available"; }
+                }
                 if (args.PropertyName == nameof(MainViewModel.IsSigningIn) && !vm.IsSigningIn && vm.SignedIn && !vm.IsBusy)
                     Dispatcher.UIThread.Post(() => { window.Show(); window.Activate(); });
             };
@@ -165,13 +172,17 @@ public sealed partial class App : Application
             var settings = new NativeMenuItem("Account & preferences"); settings.Click += (_, _) => ShowPanel();
             var exit = new NativeMenuItem("Exit"); exit.Click += (_, _) => { exiting = true; vm.StopCommand.Execute(null); desktop.Shutdown(); };
             menu.Items.Add(show); menu.Items.Add(settings); menu.Items.Add(stop); menu.Items.Add(exit);
+            WindowIcon CreateTrayIcon(bool autonomous)
+            {
             using var iconBitmap = new RenderTargetBitmap(new PixelSize(32, 32), new Vector(96, 96));
-            var icon = new Border { Width = 32, Height = 32, Background = Avalonia.Media.Brush.Parse("#214C40"), CornerRadius = new(8),
+            var icon = new Border { Width = 32, Height = 32, Background = Avalonia.Media.Brush.Parse(autonomous ? "#BB2343" : "#167247"), CornerRadius = new(8),
                 Child = new TextBlock { Text = "dg", FontFamily = "Georgia", FontSize = 21, Foreground = Avalonia.Media.Brushes.White,
                     HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center } };
             icon.Measure(new Size(32, 32)); icon.Arrange(new Rect(0, 0, 32, 32)); iconBitmap.Render(icon);
             using var iconStream = new MemoryStream(); iconBitmap.Save(iconStream, PngBitmapEncoderOptions.Default); iconStream.Position = 0;
-            tray = new TrayIcon { Icon = new WindowIcon(iconStream), ToolTipText = config.BrandName + " · Stop available", Menu = menu, IsVisible = true };
+            return new WindowIcon(iconStream);
+            }
+            tray = new TrayIcon { Icon = CreateTrayIcon(vm.IsAutonomous), ToolTipText = config.BrandName + " - " + vm.ModeLabel + " - Stop available", Menu = menu, IsVisible = true };
             window.Closing += (_, e) => { if (!exiting) { e.Cancel = true; window.Hide(); } };
             companion.Closing += (_, e) => { if (!exiting) { e.Cancel = true; companion.Collapse(); } };
             desktop.ShutdownRequested += (_, _) => exiting = true;

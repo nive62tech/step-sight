@@ -1,0 +1,45 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "command_id": {
+      "format": "uuid",
+      "title": "Command Id",
+      "type": "string"
+    },
+    "kind": {
+      "title": "Kind",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "queued",
+        "accepted",
+        "rejected",
+        "expired",
+        "cancelled"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "message": {
+      "default": "",
+      "title": "Message",
+      "type": "string"
+    }
+  },
+  "required": [
+    "command_id",
+    "kind",
+    "status"
+  ],
+  "title": "RemoteReceipt",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://desktop-guide.invalid/contracts/v1/RemoteReceipt.schema.json"
+}

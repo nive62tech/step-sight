@@ -59,6 +59,16 @@ variable "callback_url" {
   default = "http://localhost:43827/callback/"
 }
 
+variable "web_control_callback_urls" {
+  description = "HTTPS callbacks for the same-account web controller. Keep the desktop loopback callback."
+  type        = list(string)
+  default     = []
+  validation {
+    condition     = alltrue([for url in var.web_control_callback_urls : startswith(url, "https://") && endswith(url, "/control/")])
+    error_message = "Web control callbacks must use HTTPS and end with /control/."
+  }
+}
+
 variable "custom_domain" {
   type    = string
   default = ""
@@ -401,8 +411,8 @@ resource "aws_cognito_user_pool_client" "desktop" {
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["openid", "desktop-guide/lessons"]
   supported_identity_providers         = ["COGNITO"]
-  callback_urls                        = [var.callback_url]
-  logout_urls                          = [var.callback_url]
+  callback_urls                        = concat([var.callback_url], var.web_control_callback_urls)
+  logout_urls                          = concat([var.callback_url], var.web_control_callback_urls)
   enable_token_revocation              = true
   prevent_user_existence_errors        = "ENABLED"
   depends_on                           = [aws_cognito_resource_server.api]

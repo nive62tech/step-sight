@@ -69,7 +69,7 @@ internal static class UiCheck
                 if (!auth)
                 {
                     using var markerBitmap = new RenderTargetBitmap(new PixelSize(340,140),new Vector(96,96));
-                    var marker = new GuidanceMarker(); marker.Measure(new Size(340,140)); marker.Arrange(new Rect(0,0,340,140));
+                    var marker = new GuidanceMarker(); marker.SetMode(vm.IsAutonomous); marker.Measure(new Size(340,140)); marker.Arrange(new Rect(0,0,340,140));
                     marker.Animate(.65,false); markerBitmap.Render(marker); markerBitmap.Save(Path.Combine(directory,"cursor-callout.png"),PngBitmapEncoderOptions.Default);
                     marker.Animate(1.1,false); markerBitmap.Render(marker); markerBitmap.Save(Path.Combine(directory,"cursor-callout-next-frame.png"),PngBitmapEncoderOptions.Default);
                     marker.Animate(0,true); markerBitmap.Render(marker); markerBitmap.Save(Path.Combine(directory,"cursor-reduced-motion.png"),PngBitmapEncoderOptions.Default);
@@ -84,7 +84,7 @@ internal static class UiCheck
                     using var dockBitmap = new RenderTargetBitmap(new PixelSize((int)companion.Width,(int)companion.Height),new Vector(96,96));
                     dockBitmap.Render(companion); dockBitmap.Save(Path.Combine(directory,$"dock-{scene}.png"),PngBitmapEncoderOptions.Default);
                     companion.Close();
-                    var outline = HighlightWindow.CreateOutline(); outline.Width = 200; outline.Height = 64;
+                    var outline = HighlightWindow.CreateOutline(); HighlightWindow.ApplyMode(outline, vm.IsAutonomous); outline.Width = 200; outline.Height = 64;
                     outline.Measure(new Size(200,64)); outline.Arrange(new Rect(0,0,200,64));
                     using var outlineBitmap = new RenderTargetBitmap(new PixelSize(200,64),new Vector(96,96));
                     outlineBitmap.Render(outline); outlineBitmap.Save(Path.Combine(directory,"target-outline.png"),PngBitmapEncoderOptions.Default);
@@ -106,6 +106,18 @@ internal static class UiCheck
     private static void ApplyScene(MainViewModel vm,string scene)
     {
         vm.IsServiceReady = scene != "signed-out"; vm.ConnectionStatus = "UI preview · no network or desktop capture";
+        if (scene.StartsWith("autonomous", StringComparison.Ordinal))
+        {
+            vm.SelectedTaskMode = 1;
+            vm.Goal = "Open the display settings and set brightness to 20%.";
+            if (scene == "autonomous-paused")
+            {
+                vm.ActiveView = "lesson"; vm.LessonState = LessonState.Paused; vm.Status = "Agent paused";
+                vm.Instruction = "Open the display settings.";
+                vm.Notice = "You took control. Resume locally when ready.";
+            }
+        }
+        if (scene.EndsWith("listening", StringComparison.Ordinal)) { vm.VoiceListening = true; vm.VoiceStatus = "Listening... click Finish when you're done."; }
         if (scene == "signing-in") vm.IsSigningIn=true;
         if (scene is "signed-in" or "railway") vm.Notice="You're signed in. Describe your task, then choose Open browser & guide me.";
         if (scene == "current-window") vm.PrepareCurrentWindow(new(Guid.Empty,Guid.Empty,"Example editor · synthetic UI preview","preview"));

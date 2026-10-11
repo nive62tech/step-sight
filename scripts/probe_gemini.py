@@ -52,7 +52,7 @@ async def probe_intent(project: str, location: str, output: Path, budget: LiveBu
     return 0 if report["tests"]["intent_typo_to_official_site"] == "passed" else 1
 
 
-async def probe(project: str, location: str, output: Path, budget: LiveBudget, locate: bool = False, browser_controls: bool = False):
+async def probe(project: str, location: str, output: Path, budget: LiveBudget, locate: bool = False, browser_controls: bool = False, autonomous: bool = False):
     settings = Settings(model_provider="gemini", gcp_project_id=project, gcp_location=location, _env_file=None)
     provider = GeminiProvider(settings)
     diagnostics = {}
@@ -137,7 +137,8 @@ async def probe(project: str, location: str, output: Path, budget: LiveBudget, l
                      and .733 <= (target.bounds.top + target.bounds.bottom) / 2 <= .912)
             report["tests"]["locator_fresh_image_binding_and_button_center"] = "passed" if valid else "failed"
         else:
-            result, usage = await provider.guide("Show where to save practice settings", {"milestones": ["Save practice settings"]},
+            result, usage = await provider.guide("Save the synthetic practice settings" if autonomous else "Show where to save practice settings",
+                                                {"milestones": ["Save practice settings"], "interaction_mode": "autonomous" if autonomous else "guide"},
                                                 TurnRequest(request_id=uuid4(), session_version=0, observation=observation, event_kind="start"), stream.getvalue())
             target = result.step.target if result.step else None
             valid = (result.step is not None and result.step.source_observation_id == observation.id
@@ -148,6 +149,14 @@ async def probe(project: str, location: str, output: Path, budget: LiveBudget, l
                      and .65 <= (target.bounds.left + target.bounds.right) / 2 <= .9375
                      and .733 <= (target.bounds.top + target.bounds.bottom) / 2 <= .912)
             report["tests"]["guidance_fresh_image_binding_and_button_center"] = "passed" if valid else "failed"
+            if autonomous:
+                proposal = result.action_proposal
+                allowed = (proposal is not None and proposal.action.kind == "click" and proposal.risk == "low"
+                    and not proposal.provider_confirmation_required and proposal.source_observation_id == observation.id
+                    and proposal.geometry_id == observation.geometry_id and result.step is not None
+                    and result.step.expected_user_action == "click" and not result.step.uncertainty)
+                report["tests"]["autonomous_single_action_proposal"] = "passed" if allowed else "failed"
+                report["execution"] = "not run; synthetic proposal only"
         report["elapsed_ms"] = round((time.monotonic() - started) * 1000)
         report["tests"]["authentication_image_and_structured_output"] = "passed"
         report["tests"]["grounding"] = "passed" if target and target.bounds.left >= .5 else "not established"
@@ -179,15 +188,18 @@ if __name__ == "__main__":
     parser.add_argument("--locate", action="store_true", help="probe current-step target location on a synthetic image")
     parser.add_argument("--browser-controls", action="store_true", help="probe exact control labels on a synthetic browser layout with distractors")
     parser.add_argument("--plan-intent", action="store_true", help="probe one synthetic text goal without launching a browser")
+    parser.add_argument("--autonomous-plan", action="store_true", help="probe one autonomous proposal on synthetic pixels, never execute input")
     parser.add_argument("--output", type=Path, default=ROOT / "artifacts/model-probe.json")
     parser.add_argument("--budget-ledger", type=Path, default=ROOT / "artifacts/live-validation-budget.json")
     arguments = parser.parse_args()
     if not arguments.allow_live:
         parser.error("live inference requires --allow-live and the explicitly approved project")
+    if arguments.autonomous_plan and (arguments.plan_intent or arguments.locate or arguments.browser_controls):
+        parser.error("autonomous planning uses its own synthetic fixture")
     if arguments.plan_intent:
         if arguments.locate or arguments.browser_controls:
             parser.error("intent planning cannot be combined with image probes")
         raise SystemExit(asyncio.run(probe_intent(arguments.project, arguments.location, arguments.output,
             LiveBudget(arguments.budget_ledger, arguments.project))))
     raise SystemExit(asyncio.run(probe(arguments.project, arguments.location, arguments.output,
-        LiveBudget(arguments.budget_ledger, arguments.project), arguments.locate, arguments.browser_controls)))
+        LiveBudget(arguments.budget_ledger, arguments.project), arguments.locate, arguments.browser_controls, arguments.autonomous_plan)))

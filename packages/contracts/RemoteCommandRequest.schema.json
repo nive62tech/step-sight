@@ -1,0 +1,65 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "request_id": {
+      "format": "uuid",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "start",
+        "pause",
+        "resume",
+        "stop",
+        "check"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "mode": {
+      "anyOf": [
+        {
+          "enum": [
+            "guide",
+            "autonomous"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mode"
+    },
+    "goal": {
+      "anyOf": [
+        {
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Goal"
+    }
+  },
+  "required": [
+    "request_id",
+    "kind"
+  ],
+  "title": "RemoteCommandRequest",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://desktop-guide.invalid/contracts/v1/RemoteCommandRequest.schema.json"
+}

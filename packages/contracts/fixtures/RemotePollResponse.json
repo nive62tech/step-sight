@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "command": {
+    "id": "c96abb0f-9eeb-49bc-8505-37a47a25bc88",
+    "kind": "start",
+    "mode": "autonomous",
+    "goal": "Synthetic contract fixture",
+    "expires_at": "2026-10-11T00:00:00+00:00"
+  }
+}

@@ -6,7 +6,7 @@ using DesktopGuide.Platform;
 
 namespace DesktopGuide.App.Services;
 
-public sealed class GuidanceApiClient(PublicConfiguration config, ILoginSession login, HttpClient? transport = null) : IGuidanceApiClient, IBrowserPlanner, IDisposable
+public sealed class GuidanceApiClient(PublicConfiguration config, ILoginSession login, HttpClient? transport = null) : IGuidanceApiClient, IBrowserPlanner, IRemoteAgentClient, IDisposable
 {
     // Must exceed CloudFront's 60s origin timeout and the API's 35s total provider budget.
     private readonly HttpClient http = transport ?? new() { BaseAddress = new Uri(config.ApiOrigin), Timeout = TimeSpan.FromSeconds(65) };
@@ -47,14 +47,21 @@ public sealed class GuidanceApiClient(PublicConfiguration config, ILoginSession 
         }
         return Encoding.UTF8.GetString(buffer.ToArray());
     }
-    private async Task<T> Json<T>(HttpMethod method, string path, object? body, CancellationToken cancellation) where T : IVersioned
+    private async Task<T> Json<T>(HttpMethod method, string path, object? body, CancellationToken cancellation, string? desktopKey = null) where T : IVersioned
     {
         using var request = new HttpRequestMessage(method, path);
+        if (desktopKey is not null) request.Headers.Add("X-Desktop-Lease", desktopKey);
         if (body is not null) request.Content = new StringContent(JsonSerializer.Serialize(body, WireJson.Options), Encoding.UTF8, "application/json");
         using var response = await Send(request, cancellation);
         return WireJson.Read<T>(await ReadBounded(response, cancellation));
     }
     public Task<SessionView> CreateAsync(SessionCreate request, CancellationToken cancellation) => Json<SessionView>(HttpMethod.Post, "/v1/sessions", request, cancellation);
+    public Task<RemoteLease> RegisterAsync(RemoteRegistration request, CancellationToken cancellation)
+        => Json<RemoteLease>(HttpMethod.Post, "/v1/remote/connections", request, cancellation);
+    public Task<RemotePollResponse> PollAsync(RemoteLease lease, RemotePoll request, CancellationToken cancellation)
+        => Json<RemotePollResponse>(HttpMethod.Post, $"/v1/remote/connections/{lease.ConnectionId}/poll", request, cancellation, lease.DesktopKey);
+    public async Task DisconnectAsync(RemoteLease lease, CancellationToken cancellation)
+        => _ = await Json<RemoteOk>(HttpMethod.Delete, $"/v1/remote/connections/{lease.ConnectionId}", null, cancellation, lease.DesktopKey);
     public async Task<BrowserPlanResponse> PlanAsync(string goal, CancellationToken cancellation)
     {
         try { return await Json<BrowserPlanResponse>(HttpMethod.Post, "/v1/browser/plan", new BrowserPlanRequest(1, goal), cancellation); }

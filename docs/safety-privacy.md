@@ -2,6 +2,8 @@
 
 Assets include learner media, account tokens, session ownership, permission state, the physical desktop and spending allowance. Trust boundaries are the local consent UI, Windows capture/input, untrusted visible application text, public API, Cognito and GCP inference. A model output is always untrusted.
 
+The r14 autonomous mode adds a separate task grant for one window, expiring after 10 minutes or 30 dispatch attempts. Only locally validated single-use actions can consume it. Physical takeover is monitored throughout planning and execution; focus loss and Stop disarm it. Sensitive action descriptions, provider confirmation, uncertain evidence and unmatched coordinates prevent dispatch. A model's low-risk label alone is insufficient. This is a bounded development pilot; action-text checks do not prove all harmful UI actions are detected. See [autonomous behavior and evidence](autonomous-mode-plan.md).
+
 | Threat | Implemented control | Practical limit / qualification |
 |---|---|---|
 | Screen prompt injection changes goal or grants input | Versioned prompts treat screen/lesson text as evidence; local grants cannot be supplied by server | Live adversarial screenshot tests pending |
@@ -20,7 +22,7 @@ Observation consent permits a selected source only. Pointer consent is separate.
 
 The user subsequently chose screenshot-only operation. The production app now binds `NoBrowserTargetResolver`; the earlier native UIA adapter is not instantiated. No browser accessibility labels, DOM nodes or programmatic page inspection inform targeting. Native window identity, capture geometry, foreground and occlusion checks remain necessary for displaying a visual marker on the authorized window.
 
-The dedicated Gemini computer-use tool only proposes coordinates for visual guidance. SDK automatic function execution is disabled. The adapter accepts one bounded click/move point, binds it to the current image and rejects unsupported functions, invalid coordinates, multiple calls or provider-required confirmation. A point grants no physical pointer or input permission. A NOT_YET result can trigger one fresh current-target search, without advancing the lesson or dispatching input.
+The dedicated Gemini computer-use tool only proposes coordinates, used for visual guidance or locally validated autonomous clicks. SDK automatic function execution is disabled. The adapter accepts one bounded click/move point, binds it to the current image and rejects unsupported functions, invalid coordinates, multiple calls or provider-required confirmation. A point grants no physical pointer or input permission. A NOT_YET result can trigger one fresh current-target search, without advancing the lesson or dispatching input.
 
 Raw screenshots/audio and full prompts/responses are not saved by this application. Frames, audio, pending steps, goals for unsaved sessions and five-minute idempotency responses live in process memory. Unsaved session metadata expires after one hour; saved goals/milestone metadata after 30 days. Operational logs expire after 7 days, usage-only records after 90 days and deletion tombstones after 30 days. Users/devices retain identifiers for ownership; full account erasure is a separate administrator procedure. Local progress and refresh tokens use Windows user-bound DPAPI, only on opt-in; access tokens and grants remain in memory.
 

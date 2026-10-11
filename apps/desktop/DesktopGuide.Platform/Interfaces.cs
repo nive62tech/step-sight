@@ -31,6 +31,7 @@ public interface IUserActivityObserver : IDisposable
     event Action? EmergencyStop;
     event Action? SessionUnavailable;
     bool IsAssistantInputActive { get; set; }
+    bool AutonomousControlActive { get => false; set { } }
     void IgnoreWindow(nint handle);
     bool HotkeyRegistered { get; }
     bool TrackingAvailable { get; }

@@ -49,7 +49,15 @@
             "Ctrl+C",
             "Ctrl+S",
             "Escape",
-            "Tab"
+            "Tab",
+            "Enter",
+            "Backspace",
+            "Home",
+            "End",
+            "Left",
+            "Right",
+            "Up",
+            "Down"
           ],
           "title": "Chord",
           "type": "string"

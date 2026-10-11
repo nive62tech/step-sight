@@ -5,21 +5,58 @@ const description = document.querySelector("#demo-description");
 const next = document.querySelector("#demo-next");
 const states = [
   {
-    title: "You choose where we begin.",
-    text: "Pick the window you want help with. In the app, you preview the source and grant observation before guidance begins.",
+    title: "A goal is all you need to start.",
+    text: "Describe the task in your own words. Gemini chooses a starting site and opens a new browser window, or asks for clarification.",
   },
   {
-    title: "Save your first note.",
-    text: "Open File, then choose Save as. You make the click; I’ll help with what comes next. Try the highlighted item in this demo.",
+    title: "Follow the visual guide.",
+    text: "The floating companion explains the step and draws a target. Try Search trains in this illustration. In the app, you make the click with your own mouse.",
   },
   {
-    title: "A little more confident.",
-    text: "You did the step. In a live lesson, Desktop Guide checks the visible result before moving on. Here, we’re simply showing how the flow feels.",
+    title: "Check the result. Then continue.",
+    text: "Check screen asks for a fresh image to verify what changed. The live app waits through loading screens before choosing the next step. This example is only an illustration.",
   },
 ];
 let step = 0;
+let demoActionDone = false;
+let targetRetryCount = 0;
+const targetArea = document.querySelector("#demo-target-area");
+const targetStatus = document.querySelector("#demo-target-status");
+const findTarget = document.querySelector("#demo-find");
+function syncDemoControls() {
+  document.querySelector("#demo-prompt").hidden = step !== 0;
+  document.querySelector("#demo-browser").hidden = step === 0;
+  targetArea.hidden = step !== 1 || demoActionDone;
+  document.querySelector("#demo-result").hidden =
+    step === 0 || (step === 1 && !demoActionDone);
+  document.querySelector("#demo-browser-status").textContent =
+    step === 2
+      ? "Illustration · Visible result checked"
+      : demoActionDone
+        ? "Your action is ready to check"
+        : "Visual guide · You make the click";
+  findTarget.hidden = step !== 1 || demoActionDone;
+  next.disabled = step === 1 && !demoActionDone;
+  next.replaceChildren(
+    document.createTextNode(
+      step === 2
+        ? "Try again "
+        : step === 1
+          ? "Check screen "
+          : "Try the flow ",
+    ),
+  );
+  const arrow = document.createElement("span");
+  arrow.setAttribute("aria-hidden", "true");
+  arrow.textContent = step === 2 ? "↺" : "→";
+  next.append(arrow);
+}
 function showStep(index) {
   step = index;
+  demoActionDone = step === 2;
+  targetRetryCount = 0;
+  targetStatus.textContent = "";
+  targetArea.classList.remove("target-relocated");
   tabs.forEach((tab, i) => {
     tab.setAttribute("aria-selected", String(i === step));
     tab.tabIndex = i === step ? 0 : -1;
@@ -28,18 +65,7 @@ function showStep(index) {
   panel.dataset.step = String(step);
   heading.textContent = states[step].title;
   description.textContent = states[step].text;
-  document.querySelector("#demo-file-menu").hidden = step !== 1;
-  document.querySelector("#source-outline").hidden = step !== 0;
-  document.querySelector("#saved-note").hidden = step !== 2;
-  document.querySelector("#demo-filename").textContent =
-    step === 2 ? "My first note.txt — Notepad" : "Untitled — Notepad";
-  next.replaceChildren(
-    document.createTextNode(step === 2 ? "Try again " : "Next step "),
-  );
-  const arrow = document.createElement("span");
-  arrow.setAttribute("aria-hidden", "true");
-  arrow.textContent = step === 2 ? "↺" : "→";
-  next.append(arrow);
+  syncDemoControls();
 }
 tabs.forEach((tab, i) => {
   tab.addEventListener("click", () => showStep(i));
@@ -60,10 +86,25 @@ next.addEventListener("click", () => showStep((step + 1) % states.length));
 document
   .querySelector("#demo-restart")
   .addEventListener("click", () => showStep(0));
-document.querySelector("#demo-save").addEventListener("click", () => {
-  showStep(2);
+document.querySelector("#demo-launch").addEventListener("click", () => {
+  showStep(1);
+  document.querySelector("#demo-search").focus({ preventScroll: true });
+});
+document.querySelector("#demo-search").addEventListener("click", () => {
+  demoActionDone = true;
+  heading.textContent = "You made the move.";
+  description.textContent =
+    "The example result is now visible. Choose Check screen to see the next part of the flow. In the app, this checks a fresh screenshot of your task window.";
+  targetStatus.textContent = "Illustrative result ready to check.";
+  syncDemoControls();
   next.focus();
 });
+findTarget.addEventListener("click", () => {
+  targetRetryCount++;
+  targetArea.classList.add("target-relocated");
+  targetStatus.textContent = `Target highlighted again (${targetRetryCount}). The instruction has not advanced.`;
+});
+syncDemoControls();
 
 const filter = document.querySelector("#release-filter");
 const entries = [...document.querySelectorAll(".release-entry")];

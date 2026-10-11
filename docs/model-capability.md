@@ -1,6 +1,10 @@
 # Model capability and evaluation
 
-Checked against official documentation and the approved project on 11 October 2026. API **r13** uses managed **`gemini-3.1-flash-lite`** at `global` for guidance, verification and transcription, with `google-genai==2.29.0`, API v1 and **MINIMAL thinking** (`GEMINI_THINKING_LEVEL=AUTO`). Current-target location uses **`gemini-3.5-flash-lite` with the dedicated desktop computer-use tool and LOW thinking**. The compact visual-response adapter passed three live state checks; real application qualification remains open.
+Checked against official documentation and the approved project on 11 October 2026. API **r14** uses managed **`gemini-3.1-flash-lite`** at `global` for guidance, verification and transcription, with `google-genai==2.29.0`, API v1 and **MINIMAL thinking** (`GEMINI_THINKING_LEVEL=AUTO`). Current-target location uses **`gemini-3.5-flash-lite` with the dedicated desktop computer-use tool and LOW thinking**. The compact visual-response adapter passed three live state checks; real application qualification remains open.
+
+## Autonomous proposal, r14
+
+A generated settings image produced a valid low-risk autonomous click proposal with current observation/geometry binding in 5,567 ms. Usage: 3,388 input / 375 output / zero thinking tokens; conservative estimate $0.0078945. Native execution was not run. The integrated two-model route is covered with fake providers. The shared synthetic ledger is now $0.921288 accounted; $0.078712 remains, below a new $0.08 reservation.
 
 ## Current prompt planning and screenshots-only operation, r13
 

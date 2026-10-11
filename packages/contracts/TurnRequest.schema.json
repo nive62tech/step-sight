@@ -298,7 +298,10 @@
         "activity",
         "i_did_this",
         "reobserve",
+        "resume",
+        "recover",
         "demonstration_result",
+        "autonomous_result",
         "locate"
       ],
       "title": "Event Kind",

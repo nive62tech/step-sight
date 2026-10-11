@@ -1,26 +1,36 @@
-<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:DesktopGuide.App"
         x:Class="DesktopGuide.App.CompanionWindow" Title="Desktop Guide companion"
         Width="276" Height="72" CanResize="False" ShowInTaskbar="False" Topmost="True"
         ShowActivated="False" WindowDecorations="None" Background="Transparent"
         TransparencyLevelHint="Transparent" FontFamily="Bahnschrift" FontSize="14" Classes.highcontrast="{Binding HighContrast}">
   <Window.Styles>
-    <Style Selector="Border#CompanionFrame"><Setter Property="Background" Value="#F8F7F1" /><Setter Property="BorderBrush" Value="#BDCDBF" /></Style>
+    <Style Selector="Border#CompanionFrame"><Setter Property="Background" Value="{DynamicResource ModeSurface}" /><Setter Property="BorderBrush" Value="{DynamicResource ModeBorder}" /></Style>
     <Style Selector="Window.highcontrast"><Setter Property="RequestedThemeVariant" Value="Dark" /></Style>
-    <Style Selector="Window.highcontrast Border#CompanionFrame"><Setter Property="Background" Value="#101B16" /><Setter Property="BorderBrush" Value="White" /></Style>
+    <Style Selector="Window.highcontrast Border#CompanionFrame"><Setter Property="Background" Value="{DynamicResource ModeDark}" /><Setter Property="BorderBrush" Value="White" /></Style>
     <Style Selector="Window.highcontrast TextBlock"><Setter Property="Foreground" Value="White" /></Style>
-    <Style Selector="Window.highcontrast TextBox"><Setter Property="Background" Value="#182820" /><Setter Property="Foreground" Value="White" /><Setter Property="BorderBrush" Value="White" /></Style>
-    <Style Selector="Window.highcontrast Button"><Setter Property="Background" Value="#182820" /><Setter Property="Foreground" Value="White" /><Setter Property="BorderBrush" Value="White" /></Style>
-    <Style Selector="Window.highcontrast Border.notice"><Setter Property="Background" Value="#182820" /><Setter Property="BorderBrush" Value="White" /></Style>
+    <Style Selector="Window.highcontrast TextBox"><Setter Property="Background" Value="{DynamicResource ModeDarkSurface}" /><Setter Property="Foreground" Value="White" /><Setter Property="BorderBrush" Value="White" /></Style>
+    <Style Selector="Window.highcontrast Button"><Setter Property="Background" Value="{DynamicResource ModeDarkSurface}" /><Setter Property="Foreground" Value="White" /><Setter Property="BorderBrush" Value="White" /></Style>
+    <Style Selector="Window.highcontrast Border.notice"><Setter Property="Background" Value="{DynamicResource ModeDarkSurface}" /><Setter Property="BorderBrush" Value="White" /></Style>
     <Style Selector="Window.highcontrast CheckBox"><Setter Property="Foreground" Value="White" /></Style>
   </Window.Styles>
-  <Border x:Name="CompanionFrame" Margin="6" CornerRadius="19" BorderThickness="1" BoxShadow="0 3 16 0 #240B2B1D">
+  <Grid>
+    <StackPanel x:Name="BlobLauncher" Spacing="0" VerticalAlignment="Center">
+      <Button x:Name="BlobVoiceButton" Classes="blob" Padding="0" Background="Transparent" BorderBrush="Transparent" HorizontalAlignment="Center" ToolTip.Tip="Click to record up to 30 seconds. Finish sends the clip to Gemini via AWS." AutomationProperties.Name="Start listening for a spoken task">
+        <local:AgentBlob Width="138" Height="130" Autonomous="{Binding IsAutonomous}" Listening="{Binding VoiceListening}" Busy="{Binding IsBusy}" ReducedMotion="{Binding ReducedMotion}" />
+      </Button>
+      <Border Background="{DynamicResource ModeSurface}" BorderBrush="{DynamicResource ModeBorder}" BorderThickness="1" CornerRadius="14" Padding="10,5" HorizontalAlignment="Center">
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <TextBlock Text="{Binding ModeLabel}" Classes="accent" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+          <Button x:Name="BlobTypeButton" Content="Type" Classes="quiet" MinHeight="24" Padding="8,2" FontSize="11" AutomationProperties.Name="Type a task instead of speaking" />
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  <Border x:Name="CompanionFrame" Margin="6" CornerRadius="19" BorderThickness="1" BoxShadow="0 3 16 0 #24000000">
     <Grid RowDefinitions="58,*">
       <Grid ColumnDefinitions="*,Auto" Margin="6,0">
         <Button x:Name="ToggleButton" Classes="quiet" Padding="10,4" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" AutomationProperties.Name="Open or collapse Desktop Guide">
           <StackPanel Orientation="Horizontal" Spacing="11">
-            <Border Width="31" Height="33" CornerRadius="10" Background="#214C40" VerticalAlignment="Center">
-              <TextBlock Text="↖" FontSize="24" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
-            </Border>
+            <local:AgentBlob Width="38" Height="40" Autonomous="{Binding IsAutonomous}" Listening="{Binding VoiceListening}" Busy="{Binding IsBusy}" ReducedMotion="{Binding ReducedMotion}" />
             <StackPanel VerticalAlignment="Center" Spacing="2">
               <TextBlock Text="Desktop Guide" FontWeight="SemiBold" FontSize="13" />
               <TextBlock Text="{Binding CompanionStatus}" FontSize="11" Classes="muted" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" MaxWidth="210" />
@@ -31,26 +41,39 @@
       </Grid>
       <ScrollViewer x:Name="CompactBody" Grid.Row="1" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Margin="20,0,20,16" Spacing="10">
-          <Border Height="1" Background="#DEE4D9" />
+          <Border Height="1" Background="{DynamicResource ModeBorder}" />
           <TextBlock Text="{Binding CompactInstruction}" FontSize="18" FontFamily="Georgia" LineHeight="24" />
           <TextBlock Text="{Binding MarkerStatus}" FontSize="12" Classes="accent" IsVisible="{Binding HasLesson}" />
           <Border Classes="notice" Padding="10" IsVisible="{Binding HasNotice}"><TextBlock Text="{Binding Notice}" FontSize="12" /></Border>
           <WrapPanel IsVisible="{Binding HasLesson}">
-            <Button x:Name="CompactFindButton" Content="Find click target" Classes="primary" IsEnabled="{Binding CanFindTarget}" Margin="0,0,8,8" Padding="12,8" />
-            <Button x:Name="CompactCheckButton" Content="Check screen" IsEnabled="{Binding CanInteract}" Margin="0,0,0,8" Padding="12,8" />
+            <Button x:Name="CompactFindButton" Content="Find click target" Classes="primary" IsVisible="{Binding !IsAutonomous}" IsEnabled="{Binding CanFindTarget}" Margin="0,0,8,8" Padding="12,8" />
+            <Button x:Name="CompactCheckButton" Content="Check screen" IsVisible="{Binding !IsAutonomous}" IsEnabled="{Binding CanInteract}" Margin="0,0,0,8" Padding="12,8" />
+            <Button Content="Pause agent" Command="{Binding PauseCommand}" IsVisible="{Binding IsAutonomous}" IsEnabled="{Binding !IsPaused}" />
           </WrapPanel>
+          <StackPanel IsVisible="{Binding IsPaused}" Spacing="8">
+            <CheckBox IsChecked="{Binding ResumeConsent}" FontSize="12"><TextBlock Text="{Binding ResumeConsentLabel}" TextWrapping="Wrap" /></CheckBox>
+            <Button x:Name="CompactResumeButton" Content="Resume task" Classes="primary" IsEnabled="{Binding ResumeConsent}" />
+          </StackPanel>
         </StackPanel>
       </ScrollViewer>
       <ScrollViewer x:Name="ExpandedBody" Grid.Row="1" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="20,4,20,18" Spacing="14">
-          <Border Height="1" Background="#DEE4D9" />
-          <StackPanel IsVisible="{Binding !HasLesson}" Spacing="12">
-            <TextBlock Text="A little help,&#10;right where you are." FontFamily="Georgia" FontSize="25" LineHeight="29" />
+        <StackPanel Margin="20,4,20,18" Spacing="10">
+          <Border Height="1" Background="{DynamicResource ModeBorder}" />
+          <StackPanel IsVisible="{Binding !HasLesson}" Spacing="10">
+            <TextBlock Text="Your next move." FontFamily="Georgia" FontSize="25" LineHeight="29" />
             <TextBlock Text="{Binding PreparedWindowLabel}" FontSize="12" Classes="muted" MaxLines="2" TextTrimming="CharacterEllipsis" />
-            <TextBox x:Name="PromptBox" Text="{Binding Goal}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="100" MaxHeight="150" PlaceholderText="What would you like to do?" AutomationProperties.Name="What would you like help with?" />
-            <Button Classes="primary" Content="Help with this window" Command="{Binding HelpCurrentWindowCommand}" IsVisible="{Binding HasPreparedWindow}" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
-            <Button Content="{Binding ContinueLabel}" Command="{Binding ContinueSetupCommand}" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
-            <TextBlock Text="Starting sends your prompt to Gemini via AWS, then shares live screenshots of your task window for guidance. You click and type. Stop ends observation." Classes="muted" FontSize="11" LineHeight="16" />
+            <Grid ColumnDefinitions="76,*">
+              <Button x:Name="PromptBlobButton" Classes="blob" Padding="0" Background="Transparent" BorderBrush="Transparent" AutomationProperties.Name="Start or finish voice prompt" IsEnabled="{Binding !VoiceTranscribing}"><local:AgentBlob Width="72" Height="76" Autonomous="{Binding IsAutonomous}" Listening="{Binding VoiceListening}" Busy="{Binding VoiceTranscribing}" ReducedMotion="{Binding ReducedMotion}" /></Button>
+              <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center"><TextBlock Text="{Binding VoiceStatus}" FontSize="12" Classes="accent" /><Button Content="{Binding VoiceButtonLabel}" Command="{Binding TogglePromptVoiceCommand}" IsEnabled="{Binding !VoiceTranscribing}" Padding="10,6" MinHeight="30" FontSize="12" HorizontalAlignment="Left" /></StackPanel>
+            </Grid>
+            <Button Content="Cancel voice · type instead" Command="{Binding CancelVoicePromptCommand}" IsVisible="{Binding VoiceListening}" Classes="quiet" HorizontalAlignment="Left" Padding="0,4" />
+            <TextBox x:Name="PromptBox" Text="{Binding Goal}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" MaxHeight="120" PlaceholderText="Or type what you want to do…" AutomationProperties.Name="What would you like help with?" />
+            <Grid ColumnDefinitions="*,Auto,*"><TextBlock Text="Guided" Classes="accent" FontWeight="SemiBold" VerticalAlignment="Center" /><ToggleSwitch Grid.Column="1" IsChecked="{Binding AutonomousModeSelected}" IsEnabled="{Binding CanChooseMode}" OnContent="" OffContent="" AutomationProperties.Name="Autonomous mode: off is Guided, on is Autonomous" /><TextBlock Grid.Column="2" Text="Autonomous" Classes="accent" FontWeight="SemiBold" VerticalAlignment="Center" HorizontalAlignment="Right" /></Grid>
+            <TextBlock Text="{Binding TaskModeDescription}" FontSize="12" Classes="muted" />
+            <CheckBox IsChecked="{Binding AutonomousConsent}" IsVisible="{Binding IsAutonomous}" IsEnabled="{Binding !IsBusy}"><TextBlock Text="Allow the agent to control this task window" TextWrapping="Wrap" FontSize="12" /></CheckBox>
+            <Button Classes="primary" Content="{Binding CurrentWindowLabel}" Command="{Binding HelpCurrentWindowCommand}" IsVisible="{Binding HasPreparedWindow}" IsEnabled="{Binding CanSubmitTask}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+            <Button Content="{Binding ContinueLabel}" Classes="primary" Command="{Binding ContinueSetupCommand}" IsEnabled="{Binding CanSubmitTask}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+            <Expander Header="Voice, privacy &amp; task limits" FontSize="11"><StackPanel Spacing="6"><TextBlock Text="Voice clips go to Gemini via AWS for transcription. Review the text before starting." Classes="muted" FontSize="11" /><TextBlock Text="{Binding TaskDisclosure}" Classes="muted" FontSize="11" LineHeight="16" /></StackPanel></Expander>
           </StackPanel>
           <StackPanel IsVisible="{Binding HasLesson}" Spacing="12">
             <TextBlock Text="{Binding Status}" Classes="accent" FontSize="12" FontWeight="SemiBold" />
@@ -66,8 +89,8 @@
               <Button Content="New task" Command="{Binding NewLessonCommand}" />
             </WrapPanel>
             <StackPanel IsVisible="{Binding IsPaused}" Spacing="8">
-              <CheckBox IsChecked="{Binding ResumeConsent}" Content="Allow a fresh image of this window" FontSize="12" />
-              <Button x:Name="ResumeButton" Content="Resume live guidance" Classes="primary" IsEnabled="{Binding ResumeConsent}" />
+              <CheckBox IsChecked="{Binding ResumeConsent}" FontSize="12"><TextBlock Text="{Binding ResumeConsentLabel}" TextWrapping="Wrap" /></CheckBox>
+              <Button x:Name="ResumeButton" Content="Resume task" Classes="primary" IsEnabled="{Binding ResumeConsent}" />
             </StackPanel>
             <TextBox Text="{Binding Question}" PlaceholderText="Ask about this step…" IsEnabled="{Binding CanInteract}" TextWrapping="Wrap" AutomationProperties.Name="Ask about this step" />
             <WrapPanel>
@@ -83,4 +106,5 @@
       </ScrollViewer>
     </Grid>
   </Border>
+  </Grid>
 </Window>

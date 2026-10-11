@@ -5,6 +5,63 @@ namespace DesktopGuide.Tests;
 
 public sealed class SafetyTests
 {
+    [Theory] [InlineData(false)] [InlineData(true)]
+    public void ReadingABannerCanScrollButSensitiveActionsStillNeedAUser(bool manualRisk)
+    {
+        var (_, frame, proposal) = Setup();
+        var step = new GuidanceStep(Guid.NewGuid(), frame.Observation.Id, "Scroll within the login and payment information banner", "",
+            new("rectangle", "normalized_source_image", frame.Geometry.Id, new(.4,.4,.6,.6), "Notice"), "scroll",
+            [new("visible_text", "Bottom of notice")], [], [new(frame.Observation.Id, "Clipped notice with scrollbar")], []);
+        proposal = proposal with { Action = new("scroll", .5, .5, Ticks: -2), Risk = manualRisk ? "manual" : "low" };
+        if (manualRisk) Assert.Throws<SafetyException>(() => LocalRiskPolicy.RequireAutonomousAction(new(step, proposal)));
+        else LocalRiskPolicy.RequireAutonomousAction(new(step, proposal));
+        Assert.Throws<SafetyException>(() => LocalRiskPolicy.RequireAutonomousAction(new(step with { ExpectedUserAction = "click" }, proposal with { Action = new("click", .5, .5, "left") })));
+    }
+    [Theory] [InlineData(InteractionMode.Guide)] [InlineData(InteractionMode.Autonomous)]
+    public void OrdinaryConsentNeverGrantsAutonomousInput(InteractionMode mode)
+    {
+        var (s, f, p) = Setup(mode);
+        Assert.Throws<SafetyException>(() => s.ApproveAutonomousAction(p, f));
+        Assert.Throws<SafetyException>(() => s.GrantAutonomousTaskFromLocalConsent(f.Observation.ScopeId, f.Geometry.LocalTargetId, false));
+    }
+    [Fact]
+    public void AutonomousGrantIsTargetBoundExpiresAndHasAFiniteBudget()
+    {
+        var (_, f, p) = Setup(); var clock = new ManualClock(); var s = new PermissionSupervisor(clock);
+        s.GrantAutonomousTaskFromLocalConsent(f.Observation.ScopeId, f.Geometry.LocalTargetId, true);
+        Assert.Throws<SafetyException>(() => s.RequireAutonomousTask(f.Observation.ScopeId, Guid.NewGuid()));
+        for (var i = 0; i < 30; i++)
+        {
+            var action = p with { Id = Guid.NewGuid() };
+            var capability = s.ApproveAutonomousAction(action, f);
+            var lease = s.Consume(capability, action, f, true);
+            s.ExecuteBatch(lease, f, true, () => { });
+            Assert.Throws<SafetyException>(() => s.Consume(capability, action, f, true));
+        }
+        Assert.Equal(0, s.AutonomousActionsRemaining);
+        Assert.Throws<SafetyException>(() => s.ApproveAutonomousAction(p, f));
+        s.GrantAutonomousTaskFromLocalConsent(f.Observation.ScopeId, f.Geometry.LocalTargetId, true);
+        clock.Current += TimeSpan.FromMinutes(10);
+        Assert.Throws<SafetyException>(() => s.ApproveAutonomousAction(p, f));
+    }
+    [Fact]
+    public void AutonomousCapabilitiesAreExactSingleUseAndStopRevokesThem()
+    {
+        var (s, f, p) = Setup(); s.GrantAutonomousTaskFromLocalConsent(f.Observation.ScopeId, f.Geometry.LocalTargetId, true);
+        var cap = s.ApproveAutonomousAction(p, f);
+        Assert.Throws<SafetyException>(() => s.Consume(cap, p with { Action = new("click", .1, .1, "left") }, f, true));
+        cap = s.ApproveAutonomousAction(p, f); var lease = s.Consume(cap, p, f, true);
+        Assert.Throws<SafetyException>(() => s.ApproveAutonomousAction(p, f));
+        s.Revoke(); Assert.Throws<SafetyException>(() => s.ExecuteBatch(lease, f, true, () => throw new Exception("Unexpected input")));
+    }
+    [Theory] [InlineData("Click Pay")] [InlineData("Enter password")] [InlineData("Confirm booking")] [InlineData("Deploy project")]
+    public void AutonomousSensitiveActionsStayManual(string instruction)
+    {
+        var (_, f, p) = Setup();
+        var step = new GuidanceStep(Guid.NewGuid(), f.Observation.Id, instruction, "", new("rectangle", "normalized_source_image", f.Geometry.Id, new(.4,.4,.6,.6), ""), "click", [new("visible_text", "Next")], [], [new(f.Observation.Id, "Visible")], []);
+        Assert.Throws<SafetyException>(() => LocalRiskPolicy.RequireAutonomousAction(new(step, p)));
+        LocalRiskPolicy.RequireAutonomousAction(new(step with { Instruction = "Open train search" }, p));
+    }
     private static (PermissionSupervisor Supervisor, ScreenFrame Frame, ActionProposal Proposal) Setup(InteractionMode mode = InteractionMode.Demonstrate)
     {
         var scope = Guid.NewGuid(); var geometryId = Guid.NewGuid(); var observationId = Guid.NewGuid();
@@ -89,7 +146,7 @@ public sealed class SafetyTests
 
     [Theory]
     [InlineData("drag", null)]
-    [InlineData("key_chord", "Enter")]
+    [InlineData("key_chord", "Alt+F4")]
     [InlineData("key_chord", "Win+R")]
     public void UnsafePrimitivesAreRejected(string kind, string? chord)
         => Assert.Throws<SafetyException>(() => new InputAction(kind, Chord: chord).Validate());

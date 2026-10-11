@@ -27,8 +27,14 @@ public sealed class HighlightWindow : Window
         Content = CreateOutline();
         Opened += (_, _) => { if (TryGetPlatformHandle()?.Handle is { } handle) WindowStyles.ConfigureOverlay(handle); };
     }
+    public void SetMode(bool autonomous) { if (Content is Border outline) ApplyMode(outline, autonomous); }
+    internal static void ApplyMode(Border outline, bool autonomous)
+    {
+        outline.BorderBrush = Brush.Parse(autonomous ? "#EF5270" : "#48CA83");
+        outline.Background = Brush.Parse(autonomous ? "#14EF5270" : "#1448CA83");
+    }
     internal static Border CreateOutline() => new() { Margin = new(2), CornerRadius = new(7), BorderThickness = new(2),
-        BorderBrush = Brush.Parse("#3984FF"), Background = Brush.Parse("#143984FF"),
+        BorderBrush = Brush.Parse("#48CA83"), Background = Brush.Parse("#1448CA83"),
         BoxShadow = BoxShadows.Parse("0 0 0 1 #DDFFFFFF") };
     public void ShowTarget(PhysicalRect bounds)
     {

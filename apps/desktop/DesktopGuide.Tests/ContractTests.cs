@@ -12,6 +12,7 @@ public sealed class ContractTests
     [InlineData("ActionProposal")]
     [InlineData("BrowserPlanRequest")]
     [InlineData("BrowserPlanResponse")]
+    [InlineData("RemotePollResponse")]
     public void SharedFixtureRoundTripsWithoutUnknownFields(string name)
     {
         var json = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", name + ".json"));
@@ -21,6 +22,7 @@ public sealed class ContractTests
             "SessionView" => WireJson.Read<SessionView>(json),
             "BrowserPlanRequest" => WireJson.Read<BrowserPlanRequest>(json),
             "BrowserPlanResponse" => WireJson.Read<BrowserPlanResponse>(json),
+            "RemotePollResponse" => WireJson.Read<RemotePollResponse>(json),
             _ => JsonSerializer.Deserialize<ActionProposal>(json, WireJson.Options)!
         };
         var serialized = JsonSerializer.Serialize(dto, WireJson.Options);

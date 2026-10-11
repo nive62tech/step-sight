@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "latest": "2026.10.11-pilot",
+  "latest": "2026.10.11-pilot-r13",
   "releases": [
     {
       "id": "2026.10.11-pilot",
@@ -13,6 +13,18 @@
       "sha256": "e73fa1eff9691cad19c9b805c69c83bb09248373d69d9513f1d46533adffd87e",
       "bytes": 96363210,
       "notes": "Windows development pilot with an offline walkthrough, invite-only cloud sign-in, guided lesson flows, optional pointing, and separately approved single-action demonstrations. Includes the .NET runtime. This portable ZIP is unsigned; broader real-workflow and accessibility qualification is still in progress."
+    },
+    {
+      "id": "2026.10.11-pilot-r13",
+      "version": "2026.10.11 pilot r13",
+      "date": "2026-10-11",
+      "channel": "development",
+      "platform": "Windows 11 x64",
+      "signed": false,
+      "url": "/downloads/2026.10.11-pilot-r13/DesktopGuide-windows-x64-pilot-r13.zip",
+      "sha256": "d5fcace83287d657fade82399192b39df85ae345bf2c49c0768e56173ae11514",
+      "bytes": 120032437,
+      "notes": "Latest pilot: describe a goal to let Gemini choose a browser and starting site, or use Ctrl+Alt+Space for an existing window. Live screenshot guidance now uses a compact companion, drawn cursor/ring/callout, Find click target, Check screen, loading-state handling and interrupted-response recovery. Screenshot-only guidance; offline walkthroughs and browser control inspection are disabled. You click and type; autonomous execution is not included. Requires an invited pilot account and internet. Unsigned; full native workflows, voice and accessibility remain under qualification."
     }
   ]
 }

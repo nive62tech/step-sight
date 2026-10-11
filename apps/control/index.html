@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#edf8f0"><meta name="description" content="Send tasks to your Windows Desktop Guide agent from your phone.">
+  <title>Desktop Guide — Your remote</title>
+  <link rel="icon" href="/control/icon.svg"><link rel="manifest" href="/control/manifest.webmanifest">
+  <link rel="stylesheet" href="/control/styles.css"><script type="module" src="/control/app.js"></script>
+</head>
+<body>
+<div class="shell">
+  <header><a class="brand" href="/control/" aria-label="Desktop Guide home"><span class="blob" aria-hidden="true"></span><span>Desktop Guide</span></a><button id="account" class="text-button" disabled>Sign in</button></header>
+  <main>
+    <section class="intro"><h1>Your desktop,<br class="desktop-break"> from here.</h1><p>Send a task to your Windows agent.</p></section>
+    <div id="notice" class="notice" role="status" hidden></div>
+    <section id="signin-panel" class="signin-panel" hidden><h2>Your PC. Your account.</h2><p>Sign in with the same Desktop Guide account you use on Windows.</p><button id="signin" class="primary">Sign in to Desktop Guide <svg aria-hidden="true"><use href="#arrow"/></svg></button></section>
+    <section aria-label="Your computer" class="device-row"><svg class="laptop" aria-hidden="true"><use href="#laptop"/></svg><label class="sr-only" for="device">Connected computer</label><select id="device" disabled><option>No computer connected</option></select><span class="connection"><i id="connection-dot"></i><span id="connection-label">Not connected</span></span></section>
+    <div class="workspace">
+      <section class="task-input" aria-label="Send a task">
+        <div class="modes" role="group" aria-label="Task mode"><button id="guided" aria-pressed="true">Guided</button><button id="autonomous" aria-pressed="false">Autonomous</button></div>
+        <p id="mode-help" class="mode-help">The agent guides. You click on your PC.</p>
+        <form id="task-form" class="composer"><label for="goal">What would you like to do?</label><textarea id="goal" maxlength="1000" rows="4" placeholder="Open Chrome and find trains for tomorrow…" required disabled></textarea><button id="send" class="primary" disabled>Send task <svg aria-hidden="true"><use href="#arrow"/></svg></button></form>
+      </section>
+      <section class="current" aria-labelledby="current-title"><h2 id="current-title">Current task</h2><h3 id="task-state"><i class="status-dot"></i><span>Ready for a prompt</span></h3><p id="instruction">Your agent’s next step will appear here.</p><p id="task-notice" class="task-notice" hidden></p><p id="receipt" class="receipt" aria-live="polite"></p>
+        <div class="controls"><button id="pause" disabled><svg aria-hidden="true"><use href="#pause-icon"/></svg>Pause</button><button id="resume" disabled><svg aria-hidden="true"><use href="#play"/></svg>Resume</button><button id="stop" disabled><svg aria-hidden="true"><use href="#stop-icon"/></svg>Stop</button></div>
+        <button id="check" class="text-button check" hidden>Check my PC screen</button>
+      </section>
+    </div>
+    <footer><p>Keep Desktop Guide open and phone control enabled on your PC.</p><button id="connect-help" class="text-button" aria-expanded="false" aria-controls="connection-help">Connect a computer</button>
+      <div id="connection-help" hidden><ol><li>Open Desktop Guide on Windows and sign in.</li><li>In <strong>Preferences → Control from your phone</strong>, optionally allow Autonomous tasks, then select <strong>Enable phone control</strong>.</li><li>Sign in here with the same account. Your computer will appear automatically.</li></ol><p>Phone control lasts one hour. The PC must stay awake and unlocked. Local Stop disconnects the phone. Closing this web page does not stop a running task.</p><p>Prompts use the app’s browser launcher. Guided mode leaves clicks to you on the PC; Autonomous mode handles ordinary actions. Login, CAPTCHA and final commitments still need you.</p><button id="disconnect" class="text-button" disabled>Disconnect this computer</button></div>
+    </footer>
+  </main>
+</div>
+<svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><symbol id="arrow" viewBox="0 0 24 24"><path d="M4 12h15m-6-6 6 6-6 6"/></symbol><symbol id="laptop" viewBox="0 0 24 24"><path d="M5 17V4h14v13M2 20h20M5 17h14"/></symbol><symbol id="pause-icon" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol><symbol id="play" viewBox="0 0 24 24"><path d="m7 4 13 8-13 8Z"/></symbol><symbol id="stop-icon" viewBox="0 0 24 24"><path d="M5 5h14v14H5Z"/></symbol></svg>
+</body></html>

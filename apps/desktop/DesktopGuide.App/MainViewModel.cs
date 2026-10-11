@@ -26,6 +26,17 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly IBrowserLauncher? browserLauncher;
     private readonly IBrowserPlanner? browserPlanner;
     private bool ignoreStartReset;
+    private TaskCompletionSource? currentOperation;
+    private readonly IVoicePromptRecorder? voicePrompt;
+    private CancellationTokenSource? voiceCancellation;
+    private int voiceVersion;
+    [ObservableProperty] private bool voiceListening;
+    [ObservableProperty] private bool voiceTranscribing;
+    [ObservableProperty] private string voiceStatus = "Click to speak, or type a task below.";
+    public bool CanSubmitTask => !IsBusy && !VoiceListening && !VoiceTranscribing && !PhoneControlEnabled;
+    public string VoiceButtonLabel => VoiceListening ? "Finish & transcribe" : VoiceTranscribing ? "Transcribing…" : "Speak a task";
+    public string ModeLabel => IsAutonomous ? "Autonomous" : "Guided";
+    public bool AutonomousModeSelected { get => IsAutonomous; set => SelectedTaskMode = value ? 1 : 0; }
     public event Action<CaptureSource>? GuideStarting;
     public string BrandName { get; }
     public string BuildLabel { get; }
@@ -38,7 +49,20 @@ public sealed partial class MainViewModel : ObservableObject
         new("vscode", "Explore VS Code", "Understand your editor, one visible step at a time.", "Teach me to open and edit a harmless practice file in VS Code"),
         new("railway", "Deploy with Railway", "Experimental. You handle costs and deployment.", "Teach me to deploy a disposable example on Railway. Check prerequisites and resource limits first; I will handle secrets, billing and final deployment myself.")
     ];
-    public string[] Modes { get; } = ["Guide me", "Show me this action", "Let me try"];
+    public string[] Modes { get; } = ["Guide me", "Show me this action", "Let me try", "Autonomous"];
+    public string[] TaskModes { get; } = ["Guided · I click", "Autonomous · agent acts"];
+    [ObservableProperty] private int selectedTaskMode;
+    [ObservableProperty] private bool autonomousConsent;
+    public bool IsAutonomous => SelectedMode == 3;
+    public bool CanChooseMode => !IsBusy && !HasLesson && !PhoneControlEnabled;
+    public string TaskModeDescription => IsAutonomous
+        ? "The agent clicks, scrolls and types, then checks each result using screenshots. Moving your mouse or typing pauses control."
+        : "The agent shows where to click and explains each step. You control the mouse and keyboard.";
+    public string TaskDisclosure => IsAutonomous
+        ? "Your prompt and live screenshots go to Gemini via AWS. Control stays in the task window for up to 30 actions or 10 minutes. Login, CAPTCHA, payments and final submissions need you."
+        : "Your prompt and live screenshots go to Gemini via AWS. You click and type. Stop ends observation.";
+    public string ResumeConsentLabel => IsAutonomous ? "Allow fresh screenshots and autonomous control of this task window" : "Allow a fresh image of this window";
+    public string CurrentWindowLabel => IsAutonomous ? "Let agent act in this window" : "Help with this window";
     public string[] DetailLevels { get; } = ["brief", "standard", "detailed"];
     [ObservableProperty] private LessonChoice? selectedLessonChoice;
     [ObservableProperty] private string selectedLesson = "browser";
@@ -91,7 +115,7 @@ public sealed partial class MainViewModel : ObservableObject
         GuideMarkerState.WaitingForPage => "Watching for the page to finish loading",
         _ => "Guide cursor is off"
     };
-    public bool CanFindTarget => CanInteract && controller.CanLocateCurrentTarget && SelectedMode != 2;
+    public bool CanFindTarget => CanInteract && controller.CanLocateCurrentTarget && SelectedMode != 2 && !IsAutonomous;
     public bool HasCompactCard => HasLesson || HasNotice || IsBusy;
     public string CompactInstruction => LessonState is LessonState.Observing or LessonState.Planning or LessonState.Verifying
         ? "Reading the live screen. Your next instruction will appear here."
@@ -107,7 +131,7 @@ public sealed partial class MainViewModel : ObservableObject
     public bool IsMock => login.IsMock;
     public bool IsRailwayLesson => SelectedLesson == "railway";
     public bool ShowDemoPermission => SelectedMode == 1;
-    public bool ShowPointerPermission => SelectedMode != 2;
+    public bool ShowPointerPermission => SelectedMode is 0 or 1;
     public bool HasProposal => CurrentProposal is not null && SelectedMode == 1;
     public bool ShowSetup => ActiveView == "setup";
     public bool ShowLesson => ActiveView == "lesson";
@@ -119,39 +143,40 @@ public sealed partial class MainViewModel : ObservableObject
     public bool HasLesson => LessonState is not (LessonState.Idle or LessonState.Stopped);
     public bool IsPaused => LessonState is LessonState.Paused or LessonState.PrivacyPaused or LessonState.NetworkInterrupted;
     public bool CanInteract => !IsBusy && LessonState is LessonState.WaitingForLearner or LessonState.Recovering or LessonState.WaitingForApplication;
-    public bool CanPoint => CanInteract && ObservationConsent && SelectedMode != 2;
+    public bool CanPoint => CanInteract && ObservationConsent && SelectedMode is 0 or 1;
     public bool CanPreview => !IsBusy && ObservationConsent && SelectedSource is not null;
     public bool CanStart => !IsBusy && SignedIn && IsServiceReady && ObservationConsent && HasPreview && PreviewAccepted
         && SelectedSource is not null && !string.IsNullOrWhiteSpace(Goal) && (SelectedMode != 1 || DemonstrationConsent && SelectedLesson == "sandbox")
-        && (SelectedMode != 2 || !PointerConsent);
+        && (SelectedMode != 2 || !PointerConsent) && (!IsAutonomous || AutonomousConsent);
     public bool CanSignIn => !IsSigningIn && !IsBusy;
     public string AccountTitle => IsSigningIn ? "Finish sign-in in your browser" : IsMock ? "Development test mode" : SignedIn ? "You're signed in" : "Sign in to start learning";
     public string AccountDetail => IsSigningIn ? "Keep this app open. It will confirm when sign-in is complete." : IsMock ? "Live screen understanding is unavailable in this build." : SignedIn ? login.AccountName ?? "Your Desktop Guide account is connected." : "Use the email and password from your pilot invitation.";
     public string AccountShort => IsMock ? "Local / mock" : SignedIn ? "Signed in" : IsSigningIn ? "Signing in…" : "Signed out";
     public string PageTitle => ShowSettings ? "Make it yours." : ShowLesson ? "One step at a time." : SetupStep == 1 ? "Choose your window." : SetupStep == 2 ? "Take a look first." : "Learn by doing.";
-    public string PageDescription => ShowSettings ? "Your account, comfort and privacy preferences." : ShowLesson ? "Each step is chosen from your live screen. You click and type." : SetupStep == 1 ? "Pick the app you want help with. Preview it before sharing." : SetupStep == 2 ? "Confirm exactly what your guide can see and do." : "Describe your task. I'll open the browser and guide you from what I can see.";
+    public string PageDescription => ShowSettings ? "Your account, comfort and privacy preferences." : ShowLesson ? TaskModeDescription : SetupStep == 1 ? "Pick the app you want help with. Preview it before sharing." : SetupStep == 2 ? "Confirm exactly what your guide can see and do." : "Describe your task and choose whether to follow along or let the agent act.";
     public string SetupProgress => SetupStep == 0 ? "Prompt → open browser → live guidance" : "Optional · existing window setup";
-    public string ContinueLabel => IsBusy ? "Preparing your live guide…" : NeedsSignIn ? "Sign in & open my browser" : "Open browser & guide me";
+    public string ContinueLabel => IsBusy ? "Working on your task…" : IsAutonomous ? (NeedsSignIn ? "Sign in & let agent act" : "Start autonomous task") : NeedsSignIn ? "Sign in & open my browser" : "Open browser & guide me";
     public string SourceSummary => SelectedSource?.Label ?? "No window selected";
     public string LessonTitle => SelectedLessonChoice?.Title ?? "Your lesson";
-    public string ModeHelp => SelectedMode == 2 ? "You try independently. The guide observes and gives feedback; it won't move your pointer." : SelectedMode == 1 ? "Practice sandbox only. Each exact action needs your separate approval." : "The guide explains. You click and type. Pointer guidance is optional.";
-    public string StartHint => NeedsSignIn ? "Sign in before starting a cloud lesson." : !IsServiceReady ? "Check the service connection before starting." : !HasPreview ? "Preview your selected window first." : !PreviewAccepted ? "Review the preview and accept its scope to continue." : SelectedMode == 1 && SelectedLesson != "sandbox" ? "Choose Guide me or Let me try for this lesson." : SelectedMode == 1 && !DemonstrationConsent ? "Allow separate one-action approvals to use demonstrations." : "Ready. Your first step will appear after the window is observed.";
+    public string ModeHelp => IsAutonomous ? TaskModeDescription : SelectedMode == 2 ? "You try independently. The guide observes and gives feedback; it won't move your pointer." : SelectedMode == 1 ? "Practice sandbox only. Each exact action needs your separate approval." : "The guide explains. You click and type. Pointer guidance is optional.";
+    public string StartHint => NeedsSignIn ? "Sign in before starting a cloud lesson." : !IsServiceReady ? "Check the service connection before starting." : !HasPreview ? "Preview your selected window first." : !PreviewAccepted ? "Review the preview and accept its scope to continue." : IsAutonomous && !AutonomousConsent ? "Allow control of this task window before starting autonomous mode." : SelectedMode == 1 && SelectedLesson != "sandbox" ? "Choose Guide me or Let me try for this lesson." : SelectedMode == 1 && !DemonstrationConsent ? "Allow separate one-action approvals to use demonstrations." : "Ready. Your first step will appear after the window is observed.";
     public string ObservationSummary => LessonState is LessonState.Idle or LessonState.Stopped or LessonState.Completed || IsPaused ? "Observation off" : "Live · observing your task window";
     public string RecordLabel => Recording ? "Finish recording" : "Speak a question";
 
     public MainViewModel(LessonController controller, ILoginSession login, PublicConfiguration config, WindowsPointer pointer,
-        IUserActivityObserver activity, IAccountConnection connection, Action<Action>? dispatch = null, IBrowserLauncher? browserLauncher = null, IBrowserPlanner? browserPlanner = null)
+        IUserActivityObserver activity, IAccountConnection connection, Action<Action>? dispatch = null, IBrowserLauncher? browserLauncher = null, IBrowserPlanner? browserPlanner = null, IVoicePromptRecorder? voicePrompt = null)
     {
         (this.controller, this.login, this.pointer, this.activity, this.connection) = (controller, login, pointer, activity, connection);
         this.browserLauncher = browserLauncher;
         this.browserPlanner = browserPlanner;
+        this.voicePrompt = voicePrompt; ModeTheme.Apply(false);
         ui = dispatch ?? (action => { if (Dispatcher.UIThread.CheckAccess()) action(); else Dispatcher.UIThread.Post(action); });
         BrandName = config.BrandName; BuildLabel = config.BuildLabel;
         EnvironmentLabel = config.AuthMode == "mock" ? "LOCAL / MOCK · no live screen understanding" : "Cloud pilot";
         RefreshSources();
-        login.Changed += () => ui(RefreshUi);
+        login.Changed += () => ui(() => { if (!SignedIn) DisablePhoneControl(); RefreshUi(); });
         activity.EmergencyStop += () => ui(Stop);
-        activity.SessionUnavailable += () => ui(() => { taskCancellation?.Cancel(); });
+        activity.SessionUnavailable += () => ui(() => { DisablePhoneControl(); taskCancellation?.Cancel(); CancelVoicePrompt(); });
         controller.Presentation += (text, detail, state) => ui(() => { Instruction = text; Explanation = detail; Status = state; });
         controller.Notice += message => ui(() => Notice = message);
         controller.MarkerStateChanged += value => ui(() => GuideMarkerState = value);
@@ -176,16 +201,19 @@ public sealed partial class MainViewModel : ObservableObject
     }
     private void RefreshUi()
     {
+        OnPropertyChanged(nameof(CanEnablePhoneControl));
         foreach (var name in new[] { nameof(SignedIn), nameof(NeedsSignIn), nameof(AccountTitle), nameof(AccountDetail), nameof(AccountShort), nameof(ContinueLabel), nameof(CanSignIn),
             nameof(ShowSetup), nameof(ShowLesson), nameof(ShowSettings), nameof(ShowTask), nameof(ShowWindow), nameof(ShowReview), nameof(PageTitle), nameof(PageDescription), nameof(SetupProgress),
             nameof(CanPreview), nameof(CanStart), nameof(StartHint), nameof(HasNotice), nameof(SourceSummary), nameof(LessonTitle), nameof(ModeHelp), nameof(HasLesson),
-            nameof(IsPaused), nameof(CanInteract), nameof(CanPoint), nameof(ObservationSummary), nameof(IsRailwayLesson), nameof(ShowDemoPermission), nameof(ShowPointerPermission), nameof(HasProposal), nameof(HotkeyStatus), nameof(CompanionStatus), nameof(CanFindTarget), nameof(HasCompactCard), nameof(CompactInstruction) }) OnPropertyChanged(name);
+            nameof(IsPaused), nameof(CanInteract), nameof(CanPoint), nameof(ObservationSummary), nameof(IsRailwayLesson), nameof(ShowDemoPermission), nameof(ShowPointerPermission), nameof(HasProposal), nameof(HotkeyStatus), nameof(CompanionStatus), nameof(CanFindTarget), nameof(HasCompactCard), nameof(CompactInstruction),
+            nameof(IsAutonomous), nameof(CanChooseMode), nameof(TaskModeDescription), nameof(TaskDisclosure), nameof(ResumeConsentLabel), nameof(CurrentWindowLabel), nameof(ModeLabel), nameof(AutonomousModeSelected), nameof(CanSubmitTask), nameof(VoiceButtonLabel) }) OnPropertyChanged(name);
     }
-    private static string StatusText(LessonState state) => state switch
+    private string StatusText(LessonState state) => state switch
     {
         LessonState.Observing => "Looking at your window…", LessonState.Planning => "Preparing your next step…", LessonState.Verifying => "Checking what changed…",
-        LessonState.WaitingForLearner => "Your turn", LessonState.PrivacyPaused => "Paused for privacy", LessonState.Paused => "Lesson paused",
+        LessonState.WaitingForLearner => IsAutonomous ? "Agent preparing action" : "Your turn", LessonState.PrivacyPaused => "Paused for privacy", LessonState.Paused => IsAutonomous ? "Agent paused" : "Lesson paused",
         LessonState.WaitingForApplication => "Waiting for the page", LessonState.Recovering => "Guidance needs attention",
+        LessonState.Acting => "Agent acting · move the mouse to pause",
         LessonState.Stopped => "Stopped · permissions cleared", LessonState.NetworkInterrupted => "Connection interrupted", LessonState.Completed => "Lesson complete", _ => "Getting ready…"
     };
     partial void OnActiveViewChanged(string value) => RefreshUi();
@@ -199,7 +227,7 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnInstructionChanged(string value) => OnPropertyChanged(nameof(CompactInstruction));
     partial void OnLessonStateChanged(LessonState value) => RefreshUi();
     partial void OnCurrentProposalChanged(ActionProposal? value) => RefreshUi();
-    partial void OnGoalChanged(string value) => RefreshUi();
+    partial void OnGoalChanged(string value) { AutonomousConsent = false; RefreshUi(); }
     partial void OnPreviewAcceptedChanged(bool value) => RefreshUi();
     partial void OnHasPreviewChanged(bool value) => RefreshUi();
     partial void OnPointerConsentChanged(bool value) => RefreshUi();
@@ -212,7 +240,24 @@ public sealed partial class MainViewModel : ObservableObject
         if (value is null) return; SelectedLesson = value.Id; Goal = value.Goal;
         if (value.Id != "sandbox" && SelectedMode == 1) SelectedMode = 0; RefreshUi();
     }
-    partial void OnSelectedModeChanged(int value) { if (value == 2) { PointerConsent = false; DemonstrationConsent = false; } RefreshUi(); }
+    private bool restoringTaskMode;
+    partial void OnSelectedModeChanged(int value)
+    {
+        ModeTheme.Apply(value == 3);
+        if (!restoringTaskMode)
+        {
+            CancelVoicePrompt();
+            if (HasLesson) Stop();
+            AutonomousConsent = false;
+            if (value is 2 or 3) { PointerConsent = false; DemonstrationConsent = false; }
+        }
+        // Keep the advanced practice modes when syncing the two-choice task selector.
+        selectedTaskMode = value == 3 ? 1 : 0; OnPropertyChanged(nameof(SelectedTaskMode)); RefreshUi();
+    }
+    partial void OnSelectedTaskModeChanged(int value) { SelectedMode = value == 1 ? 3 : 0; }
+    partial void OnAutonomousConsentChanged(bool value) => RefreshUi();
+    partial void OnVoiceListeningChanged(bool value) => RefreshUi();
+    partial void OnVoiceTranscribingChanged(bool value) => RefreshUi();
     partial void OnNarrationChanged(bool value) => controller.NarrationEnabled = value;
     partial void OnReducedMotionChanged(bool value) => pointer.ReducedMotion = value;
     partial void OnRememberMeChanged(bool value) => login.RememberMe = value;
@@ -225,7 +270,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (source is not null) Goal = "Help me understand what to do in this window.";
     }
     private void InvalidatePreview() { HasPreview = false; PreviewAccepted = false; if (ObservationConsent) controller.StopLocal(); }
-    private void ClearConsent() { ObservationConsent = false; PointerConsent = false; DemonstrationConsent = false; PreviewAccepted = false; HasPreview = false; ResumeConsent = false; }
+    private void ClearConsent() { ObservationConsent = false; PointerConsent = false; DemonstrationConsent = false; AutonomousConsent = false; PreviewAccepted = false; HasPreview = false; ResumeConsent = false; }
     private IReadOnlyList<Bounds> ReadMasks()
     {
         if (string.IsNullOrWhiteSpace(Masks)) return [];
@@ -241,16 +286,26 @@ public sealed partial class MainViewModel : ObservableObject
         }
         catch (Exception ex) when (ex is FormatException or OverflowException) { throw new SafetyException("Use numbers between 0 and 1 for privacy masks, separated by commas."); }
     }
-    private async Task Run(Func<Task> action)
+    private async Task Run(Func<Task> action, bool waitForIdle = false)
     {
-        if (IsBusy) return; IsBusy = true; Notice = "";
+        if (IsBusy)
+        {
+            if (!waitForIdle || currentOperation is null) return;
+            var epoch = controller.Permissions.Epoch;
+            Notice = "Finishing the previous analysis, then resuming from a fresh image...";
+            try { await currentOperation.Task.WaitAsync(controller.Permissions.Cancellation); }
+            catch (OperationCanceledException) { return; }
+            if (epoch != controller.Permissions.Epoch || IsBusy) return;
+        }
+        var operation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        currentOperation = operation; IsBusy = true; Notice = "";
         try { await action(); }
         catch (OperationCanceledException) { Notice = "Cancelled. You can try again when you're ready."; }
         catch (SignInException ex) { Notice = ex.Message; }
         catch (SafetyException ex) { Notice = ex.Message; }
         catch (HttpRequestException) { Notice = "Couldn't reach the service. Check your connection, then retry."; }
         catch (Exception ex) when (ex is not OutOfMemoryException) { Notice = "This step couldn't be completed. Check your selected window and permissions, then try again."; }
-        finally { IsBusy = false; RefreshUi(); }
+        finally { IsBusy = false; currentOperation = null; operation.TrySetResult(); RefreshUi(); }
     }
     [RelayCommand] private void DismissNotice() => Notice = "";
     [RelayCommand] private void RefreshSources()
@@ -262,13 +317,16 @@ public sealed partial class MainViewModel : ObservableObject
     }
     [RelayCommand] private Task ContinueSetup() => Run(async () =>
     {
+        if (VoiceListening || VoiceTranscribing) throw new SafetyException("Finish or cancel voice input before starting.");
         var prompt = Goal;
+        var autonomous = IsAutonomous;
+        if (autonomous && !AutonomousConsent) throw new SafetyException("Allow autonomous control for this task before starting.");
         if (string.IsNullOrWhiteSpace(prompt)) throw new SafetyException("Describe what you want to do first.");
         if (prompt.Length > 1000) throw new SafetyException("Keep your task description under 1,000 characters.");
         if (IsMock) throw new SafetyException("Live guidance needs the connected cloud build. No offline walkthrough is available.");
         if (browserLauncher is null) throw new SafetyException("Browser launch is unavailable in this build.");
         if (browserPlanner is null) throw new SafetyException("Live intent planning is unavailable in this build.");
-        Stop();
+        StopTask();
         using var task = new CancellationTokenSource(); taskCancellation = task;
         try
         {
@@ -285,14 +343,14 @@ public sealed partial class MainViewModel : ObservableObject
             Status = $"Opening {plan.Browser}…"; Notice = decision.Message + $" ({plan.Address.Host})";
             var launched = await browserLauncher.OpenAsync(plan, task.Token);
             task.Token.ThrowIfCancellationRequested();
-            SelectedSource = launched; SelectedLesson = plan.LessonId; SelectedMode = 0;
+            SelectedSource = launched; SelectedLesson = plan.LessonId;
             ObservationConsent = true; controller.Masks = ReadMasks();
             await controller.PreviewAsync(launched); task.Token.ThrowIfCancellationRequested();
             PreviewAccepted = true; ActiveView = "lesson"; controller.DetailLevel = SelectedDetail;
             Notice = "";
             GuideStarting?.Invoke(launched);
             ignoreStartReset = true;
-            await controller.StartAsync(launched, prompt, plan.LessonId, InteractionMode.Guide, false, false, SaveProgress);
+            await controller.StartAsync(launched, prompt, plan.LessonId, autonomous ? InteractionMode.Autonomous : InteractionMode.Guide, false, false, SaveProgress, autonomous);
         }
         catch { controller.StopLocal(); ClearConsent(); throw; }
         finally { ignoreStartReset = false; if (taskCancellation == task) taskCancellation = null; }
@@ -300,11 +358,14 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand] private void ChooseExistingWindow() { Stop(); RefreshSources(); SelectedLesson = "browser"; SetupStep = 1; ActiveView = "setup"; }
     [RelayCommand] private Task HelpCurrentWindow() => Run(async () =>
     {
+        if (VoiceListening || VoiceTranscribing) throw new SafetyException("Finish or cancel voice input before starting.");
         var selected = PreparedWindow ?? throw new SafetyException("Press Ctrl + Alt + Space while your task window is in front.");
         var prompt = Goal;
+        var autonomous = IsAutonomous;
+        if (autonomous && !AutonomousConsent) throw new SafetyException("Allow autonomous control for this task before starting.");
         if (string.IsNullOrWhiteSpace(prompt)) throw new SafetyException("Describe what you want to do in this window.");
         if (IsMock) throw new SafetyException("Live screen help needs the connected cloud build.");
-        Stop(); using var task = new CancellationTokenSource(); taskCancellation = task;
+        StopTask(); using var task = new CancellationTokenSource(); taskCancellation = task;
         try
         {
             if (!SignedIn)
@@ -313,12 +374,12 @@ public sealed partial class MainViewModel : ObservableObject
                 try { await login.SignInAsync(task.Token); } finally { IsSigningIn = false; }
             }
             task.Token.ThrowIfCancellationRequested(); await CheckConnectionCore(task.Token); task.Token.ThrowIfCancellationRequested();
-            SelectedSource = selected; SelectedLesson = "browser"; SelectedMode = 0;
+            SelectedSource = selected; SelectedLesson = "browser";
             ObservationConsent = true; controller.Masks = ReadMasks();
             await controller.PreviewAsync(selected); task.Token.ThrowIfCancellationRequested();
             PreviewAccepted = true; ActiveView = "lesson"; controller.DetailLevel = SelectedDetail; ignoreStartReset = true;
             GuideStarting?.Invoke(selected);
-            await controller.StartAsync(selected, prompt, "browser", InteractionMode.Guide, false, false, SaveProgress);
+            await controller.StartAsync(selected, prompt, "browser", autonomous ? InteractionMode.Autonomous : InteractionMode.Guide, false, false, SaveProgress, autonomous);
         }
         catch { controller.StopLocal(); ClearConsent(); throw; }
         finally { ignoreStartReset = false; if (taskCancellation == task) taskCancellation = null; }
@@ -336,25 +397,33 @@ public sealed partial class MainViewModel : ObservableObject
     });
     [RelayCommand] private Task Start() => Run(async () =>
     {
+        if (VoiceListening || VoiceTranscribing) throw new SafetyException("Finish or cancel voice input before starting.");
         if (!SignedIn) throw new SignInException("Sign in before starting a cloud lesson.");
         if (!IsServiceReady) await CheckConnectionCore();
         if (!ObservationConsent || !HasPreview || !PreviewAccepted || SelectedSource is null || string.IsNullOrWhiteSpace(Goal))
             throw new SafetyException("Preview your selected window and accept its scope before starting.");
         if (SelectedMode == 1 && (!DemonstrationConsent || SelectedLesson != "sandbox")) throw new SafetyException("Demonstrations need separate permission and a practice sandbox lesson.");
         if (SelectedMode == 2 && PointerConsent) throw new SafetyException("Let me try doesn't move the pointer. Turn off pointer guidance first.");
+        if (IsAutonomous && !AutonomousConsent) throw new SafetyException("Allow autonomous control for this task before starting.");
         if (IsMock) throw new SafetyException("Connect the live cloud build to analyse your screen.");
         ActiveView = "lesson"; controller.DetailLevel = SelectedDetail; ignoreStartReset = true;
         GuideStarting?.Invoke(SelectedSource);
-        try { await controller.StartAsync(SelectedSource, Goal, SelectedLesson, (InteractionMode)SelectedMode, PointerConsent, DemonstrationConsent, SaveProgress); }
+        try { await controller.StartAsync(SelectedSource, Goal, SelectedLesson, (InteractionMode)SelectedMode, PointerConsent, DemonstrationConsent, SaveProgress, AutonomousConsent); }
         finally { ignoreStartReset = false; }
     });
-    [RelayCommand] private void Stop() { taskCancellation?.Cancel(); signInCancellation?.Cancel(); controller.StopLocal(); ClearConsent(); Status = "Stopped · permissions cleared"; }
+    private void StopTask() { CancelVoicePrompt(); taskCancellation?.Cancel(); signInCancellation?.Cancel(); controller.StopLocal(); ClearConsent(); Status = "Stopped · permissions cleared"; }
+    [RelayCommand] private void Stop() { DisablePhoneControl(); StopTask(); }
     [RelayCommand] private void Pause() => controller.PauseLocal();
-    [RelayCommand] private Task Resume() => Run(async () =>
+    [RelayCommand(AllowConcurrentExecutions = true)] private Task Resume() => Run(async () =>
     {
         if (!ResumeConsent) throw new SafetyException("Allow a fresh observation before resuming with the same selected window and lesson permissions.");
-        await controller.ResumeAsync(); ResumeConsent = false;
-    });
+        // A manual handoff is a step state, never a mode change. Keep the original task mode.
+        restoringTaskMode = true;
+        try { SelectedMode = (int)controller.Mode; }
+        finally { restoringTaskMode = false; }
+        GuideStarting?.Invoke(SelectedSource!);
+        await controller.ResumeAsync(IsAutonomous && ResumeConsent); ResumeConsent = false;
+    }, waitForIdle: true);
     [RelayCommand] private Task ShowWhere() => Run(controller.ShowWhereAsync);
     [RelayCommand] private Task FindTarget() => Run(() => controller.ObserveTurnAsync("locate"));
     [RelayCommand] private Task DidThis() => Run(() => controller.ObserveTurnAsync("i_did_this"));
@@ -399,4 +468,57 @@ public sealed partial class MainViewModel : ObservableObject
         if (!Recording) { controller.BeginQuestionRecording(); Recording = true; Notice = "Listening. Click Finish recording to send your question (maximum 30 seconds)."; }
         else { Recording = false; await controller.EndQuestionRecordingAsync(); }
     });
+
+    [RelayCommand] private async Task TogglePromptVoice()
+    {
+        if (VoiceListening) { await FinishVoicePromptAsync(voiceVersion); return; }
+        if (VoiceTranscribing) return;
+        if (HasLesson || IsBusy) { PreparedWindow = SelectedSource; Stop(); }
+        ActiveView = "setup"; SetupStep = 0;
+        if (NeedsSignIn || IsMock) { Notice = "Sign in to use voice with the cloud agent. You can type your task here."; return; }
+        if (voicePrompt is null) { Notice = "Voice input is unavailable. Type your task below."; return; }
+        CancelVoicePrompt();
+        voiceCancellation = new CancellationTokenSource(); var version = voiceVersion;
+        try
+        {
+            voicePrompt.Start(); VoiceListening = true;
+            VoiceStatus = "Listening · click Finish when ready. Up to 30 seconds."; Notice = "";
+            _ = FinishVoiceAfterLimitAsync(version, voiceCancellation.Token);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        { CancelVoicePrompt(); Notice = "Microphone unavailable. Check Windows microphone access, or type your task."; }
+        await Task.CompletedTask;
+    }
+    private async Task FinishVoiceAfterLimitAsync(int version, CancellationToken cancellation)
+    {
+        try { await Task.Delay(TimeSpan.FromSeconds(30), cancellation); ui(() => { if (version == voiceVersion && VoiceListening) _ = FinishVoicePromptAsync(version); }); }
+        catch (OperationCanceledException) { }
+    }
+    private async Task FinishVoicePromptAsync(int version)
+    {
+        if (version != voiceVersion || !VoiceListening || voicePrompt is null || voiceCancellation is null) return;
+        VoiceListening = false; VoiceTranscribing = true; VoiceStatus = "Turning your speech into a task…";
+        var cancellation = voiceCancellation.Token;
+        try
+        {
+            var transcript = await voicePrompt.FinishAsync(cancellation);
+            if (version != voiceVersion || cancellation.IsCancellationRequested) return;
+            Goal = transcript; VoiceStatus = "Review your words, then start when ready.";
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        { if (version == voiceVersion) { VoiceStatus = "Voice input could not finish. Try again or type below."; Notice = ex is SafetyException ? ex.Message : "Voice service unavailable. Your task has not started."; } }
+        finally { if (version == voiceVersion) { VoiceTranscribing = false; voiceCancellation?.Cancel(); voiceCancellation?.Dispose(); voiceCancellation = null; } }
+    }
+    [RelayCommand] private void TypePrompt()
+    {
+        if (HasLesson || IsBusy) { PreparedWindow = SelectedSource; Stop(); }
+        CancelVoicePrompt(); ActiveView = "setup"; SetupStep = 0;
+    }
+    [RelayCommand] private void CancelVoicePrompt()
+    {
+        voiceVersion++; voiceCancellation?.Cancel(); voiceCancellation?.Dispose(); voiceCancellation = null;
+        if (VoiceListening || VoiceTranscribing) voicePrompt?.Cancel();
+        VoiceListening = VoiceTranscribing = false; VoiceStatus = "Click to speak, or type a task below.";
+    }
 }

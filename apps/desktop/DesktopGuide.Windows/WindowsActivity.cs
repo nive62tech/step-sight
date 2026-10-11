@@ -12,6 +12,7 @@ public sealed class WindowsActivity : IUserActivityObserver, ICompanionHotkey
     private readonly ManualResetEventSlim ready = new();
     private nint hwnd, mouseHandle, keyboardHandle;
     private volatile bool active;
+    private volatile bool autonomous;
     private volatile bool observationEnabled;
     private long heartbeat;
     private long dispatcherHeartbeat;
@@ -28,6 +29,7 @@ public sealed class WindowsActivity : IUserActivityObserver, ICompanionHotkey
     public event Action? SessionUnavailable;
     public bool HotkeyRegistered { get; private set; }
     public bool IsAssistantInputActive { get => active; set => active = value; }
+    public bool AutonomousControlActive { get => autonomous; set => autonomous = value; }
     public bool ObservationEnabled { get => observationEnabled; set => observationEnabled = value; }
     public bool TrackingAvailable => mouseHandle != 0 && keyboardHandle != 0
         && Environment.TickCount64 - Interlocked.Read(ref heartbeat) < 2000
@@ -83,7 +85,7 @@ public sealed class WindowsActivity : IUserActivityObserver, ICompanionHotkey
             var info = Marshal.PtrToStructure<Native.MouseHook>(data);
             if (info.ExtraInfo != Native.InputTag)
             {
-                if (active) Queue(ref pendingTakeover);
+                if (active || autonomous) Queue(ref pendingTakeover);
                 if (message != 0x200 && !Ignored(Native.WindowFromPoint(info.Point))) Queue(ref pendingActivity);
             }
         }
@@ -96,7 +98,7 @@ public sealed class WindowsActivity : IUserActivityObserver, ICompanionHotkey
             var info = Marshal.PtrToStructure<Native.KeyboardHook>(data);
             if (info.ExtraInfo != Native.InputTag)
             {
-                if (active) Queue(ref pendingTakeover);
+                if (active || autonomous) Queue(ref pendingTakeover);
                 if (!Ignored(Native.GetForegroundWindow())) Queue(ref pendingActivity);
             }
         }

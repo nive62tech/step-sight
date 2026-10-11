@@ -4,9 +4,9 @@ public enum LessonState
 {
     Idle, Consent, Observing, Planning, Presenting, Pointing, WaitingForLearner, Verifying,
     AnsweringQuestion, WaitingForApplication, Recovering, AwaitingDemonstrationApproval,
-    Demonstrating, PrivacyPaused, Paused, NetworkInterrupted, Stopped, Completed
+    Demonstrating, Acting, PrivacyPaused, Paused, NetworkInterrupted, Stopped, Completed
 }
-public enum InteractionMode { Guide, Demonstrate, Practice }
+public enum InteractionMode { Guide, Demonstrate, Practice, Autonomous }
 
 public sealed class SessionMachine
 {
@@ -22,13 +22,14 @@ public sealed class SessionMachine
         [LessonState.Planning] = [LessonState.Presenting, LessonState.Recovering],
         [LessonState.Presenting] = [LessonState.Pointing, LessonState.WaitingForLearner, LessonState.WaitingForApplication, LessonState.AwaitingDemonstrationApproval, LessonState.Completed],
         [LessonState.Pointing] = [LessonState.WaitingForLearner, LessonState.Observing],
-        [LessonState.WaitingForLearner] = [LessonState.Observing, LessonState.Verifying, LessonState.Pointing, LessonState.AnsweringQuestion, LessonState.AwaitingDemonstrationApproval],
+        [LessonState.WaitingForLearner] = [LessonState.Observing, LessonState.Verifying, LessonState.Pointing, LessonState.AnsweringQuestion, LessonState.AwaitingDemonstrationApproval, LessonState.Acting],
         [LessonState.Verifying] = [LessonState.Presenting, LessonState.Recovering, LessonState.WaitingForApplication, LessonState.Completed],
         [LessonState.AnsweringQuestion] = [LessonState.WaitingForLearner, LessonState.Observing],
         [LessonState.WaitingForApplication] = [LessonState.Observing],
         [LessonState.Recovering] = [LessonState.Observing, LessonState.AnsweringQuestion],
         [LessonState.AwaitingDemonstrationApproval] = [LessonState.Demonstrating, LessonState.WaitingForLearner],
         [LessonState.Demonstrating] = [LessonState.Verifying],
+        [LessonState.Acting] = [LessonState.Verifying, LessonState.Observing],
         [LessonState.Paused] = [LessonState.Consent],
         [LessonState.PrivacyPaused] = [LessonState.Consent],
         [LessonState.NetworkInterrupted] = [LessonState.Consent],
