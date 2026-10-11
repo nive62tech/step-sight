@@ -18,7 +18,11 @@ from sqlalchemy.pool import StaticPool
 from app.auth import Authenticator
 from app.config import Settings, get_settings
 from app.contracts import (
+    BrowserPlanRequest,
+    BrowserPlanResponse,
+    GuidanceStep,
     LearnerEvent,
+    ProviderResult,
     QuestionRequest,
     SessionCreate,
     SessionIntent,
@@ -213,7 +217,8 @@ def create_app(settings: Settings | None = None, provider=None):
                 async with asyncio.timeout(max(.1, min(settings.provider_timeout_seconds, deadline - time.monotonic()))):
                     result, usage = await call(repair)
             with db_factory() as db:
-                actual = (usage.input_tokens * settings.input_price_per_million + usage.output_tokens * settings.output_price_per_million) / 1_000_000
+                prices = (.30, 2.50) if settings.gemini_computer_locator_enabled and model == settings.gemini_locator_model else (settings.input_price_per_million, settings.output_price_per_million)
+                actual = (usage.input_tokens * prices[0] + usage.output_tokens * prices[1]) / 1_000_000
                 db.execute(update(ModelCall).where(ModelCall.id == record_id).values(
                     status="completed" if usage.known else "completed_usage_unknown",
                     input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
@@ -262,6 +267,17 @@ def create_app(settings: Settings | None = None, provider=None):
     async def list_lessons():
         return lessons.list()
 
+    @app.post("/v1/browser/plan", response_model=BrowserPlanResponse)
+    async def plan_browser(body: BrowserPlanRequest, request: Request):
+        if not body.goal.strip():
+            raise HTTPException(422, "describe the task first")
+        with db_factory() as db:
+            oid = owner(db, request)
+        # No session, capture or input grant is created. Only usage metadata is
+        # persisted; goal and destination stay within the request/response.
+        intent = await accounted_call(oid, None, lambda repair: provider.plan_browser(body.goal, repair=repair), settings.gemini_guidance_model)
+        return BrowserPlanResponse(**intent.model_dump(), provider=settings.model_provider)
+
     @app.post("/v1/sessions", response_model=SessionView, status_code=201)
     async def create_session(body: SessionCreate, request: Request):
         cleanup()
@@ -285,7 +301,7 @@ def create_app(settings: Settings | None = None, provider=None):
             db.add(ConsentRecord(owner_id=oid, session_id=row.id, save_progress=body.save_progress))
             db.commit()
             contexts[row.id] = {"goal": body.goal, "pending_step": None}
-            return view(row)
+        return view(row)
 
     @app.get("/v1/sessions/{sid}", response_model=SessionView)
     async def get_session(sid: UUID, request: Request):
@@ -335,6 +351,9 @@ def create_app(settings: Settings | None = None, provider=None):
                 previous = context["pending_step"]
                 if (body.previous_step.model_dump(mode="json") if body.previous_step else None) != previous:
                     raise HTTPException(409, "previous step mismatch; reobserve")
+                locating = body.event_kind == "locate"
+                if locating and previous is None:
+                    raise HTTPException(409, "no current instruction to locate")
                 count = db.scalar(select(func.count()).select_from(Turn).where(Turn.session_id == sid_text))
                 if count >= settings.max_model_turns:
                     raise HTTPException(429, "lesson turn limit reached; progress preserved")
@@ -346,9 +365,17 @@ def create_app(settings: Settings | None = None, provider=None):
                     "language": row.language, "detail_level": row.detail_level}
             try:
                 inference_started = time.monotonic()
+                async def infer(repair):
+                    if not locating:
+                        return await provider.guide(context["goal"], lesson_context, body, image, repair=repair)
+                    current = GuidanceStep.model_validate(previous)
+                    location, usage = await provider.locate(context["goal"], current, obs, image, repair=repair)
+                    # The model can change grounding only, never the instruction, goal, progress or input authority.
+                    located = current.model_copy(update={"source_observation_id": location.source_observation_id,
+                        "target": location.target, "evidence": location.evidence, "uncertainty": location.uncertainty})
+                    return ProviderResult(step=located), usage
                 result = await accounted_call(owner_id, turn_id,
-                    lambda repair: provider.guide(context["goal"], lesson_context, body, image, repair=repair),
-                    settings.gemini_verification_model if body.previous_step else settings.gemini_guidance_model)
+                    infer, settings.gemini_locator_model if locating and settings.gemini_computer_locator_enabled else settings.gemini_guidance_model if locating or not body.previous_step else settings.gemini_verification_model)
                 inference_ms = round((time.monotonic() - inference_started) * 1000)
                 validation_started = time.monotonic()
                 # Repeat critical grounding checks independent of model schema success.
@@ -366,7 +393,7 @@ def create_app(settings: Settings | None = None, provider=None):
                 ):
                     raise HTTPException(502, "provider returned incompatible proposal")
                 confirmed = result.verification and result.verification.status == VerificationStatus.CONFIRMED
-                if body.previous_step and not confirmed:
+                if body.previous_step and not confirmed and not locating:
                     result.step, result.action_proposal, result.completed = None, None, False
                 if result.completed and (not body.previous_step or not confirmed):
                     raise HTTPException(502, "completion lacks verified final evidence")
@@ -400,6 +427,23 @@ def create_app(settings: Settings | None = None, provider=None):
                     db.execute(update(Turn).where(Turn.id == turn_id).values(status="interrupted"))
                     db.commit()
                 raise
+
+    @app.get("/v1/sessions/{sid}/turns/{request_id}")
+    async def recover_turn(sid: UUID, request_id: UUID, request: Request):
+        """Recover an already submitted result after a gateway/network timeout, without another model call."""
+        with db_factory() as db:
+            row = owned_session(db, request, sid)
+            if row.state not in {"OBSERVING", "WAITING_FOR_LEARNER", "COMPLETED"}:
+                raise HTTPException(409, "session interrupted; discard late response")
+            submitted = db.scalar(select(Turn).where(Turn.session_id == str(sid), Turn.idempotency_key == str(request_id)))
+            if submitted is None:
+                raise HTTPException(404, "turn not found")
+            cached = cache.get(submitted.id)
+            if cached and cached[0] > time.monotonic() and row.version == cached[1]["session_version"]:
+                return cached[1]
+            if submitted.status == "pending" and locks.get(str(sid), asyncio.Lock()).locked():
+                return JSONResponse({"status": "pending"}, status_code=202)
+            raise HTTPException(409, "turn result unavailable; pause and resume to synchronize")
 
     @app.post("/v1/sessions/{sid}/questions")
     async def question(sid: UUID, body: QuestionRequest, request: Request):

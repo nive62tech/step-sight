@@ -6,23 +6,39 @@ namespace DesktopGuide.Tests;
 
 public sealed class BrowserLaunchTests
 {
+    private static BrowserPlanResponse Decision(string address) => new(1, "open_browser", "chrome", address, "Open the starting site.", "gemini");
+
     [Theory]
-    [InlineData("Help me deploy on Railway", "chrome", "https://railway.com/dashboard", "railway")]
-    [InlineData("Open Firefox and help me on Railway", "firefox", "https://railway.com/dashboard", "railway")]
-    [InlineData("Use Edge on https://example.org/settings to change my theme", "edge", "https://example.org/settings", "browser")]
-    public void PromptSelectsOnlyBrowserAndStartingWebsite(string prompt, string browser, string address, string lesson)
+    [InlineData("https://www.irctc.co.in/nget/train-search")]
+    [InlineData("https://railway.com/dashboard")]
+    [InlineData("https://example.org/a-site-not-in-any-catalog")]
+    public void ModelChoosesTheWebsiteAndEverySiteUsesLiveGuidance(string address)
     {
-        var plan = BrowserLaunch.FromPrompt(prompt);
-        Assert.Equal(browser, plan.Browser); Assert.Equal(address, plan.Address.AbsoluteUri); Assert.Equal(lesson, plan.LessonId);
+        var plan = BrowserLaunch.FromPlan(Decision(address) with { Browser = "firefox" });
+        Assert.Equal("firefox", plan.Browser); Assert.Equal(address, plan.Address.AbsoluteUri);
+        Assert.Equal("browser", plan.LessonId);
     }
+
     [Theory]
-    [InlineData("")] [InlineData("do something")]
-    [InlineData("Open chrome and firefox on Railway")]
-    [InlineData("Open http://example.org")]
-    [InlineData("Open https://user:password@example.org")]
-    [InlineData("Open https://127.0.0.1")]
-    [InlineData("Open https://localhost")]
-    [InlineData("Open https://example.org:4567")]
-    [InlineData("Open https://example.org and https://example.com")]
-    public void AmbiguousOrUnsafeLaunchDoesNotGuess(string prompt) => Assert.Throws<SafetyException>(() => BrowserLaunch.FromPrompt(prompt));
+    [InlineData("http://example.org")]
+    [InlineData("https://user:password@example.org")]
+    [InlineData("https://127.0.0.1")]
+    [InlineData("https://localhost")]
+    [InlineData("https://example.org:4567")]
+    [InlineData("file:///C:/Windows")]
+    [InlineData("https://private.internal")]
+    [InlineData("https://example.org/\n--argument")]
+    [InlineData("https://example.org\\other")]
+    public void ModelOutputStillRequiresAValidLaunchDestination(string address)
+        => Assert.Throws<SafetyException>(() => BrowserLaunch.FromPlan(Decision(address)));
+
+    [Fact] public void ClarificationHasNoLaunchAndUntrustedVersionsOrProvidersAreRejected()
+    {
+        var clarify = Decision("https://example.org") with { Decision = "clarify", Address = null, Message = "Which website do you mean?" };
+        Assert.Equal(clarify.Message, Assert.Throws<SafetyException>(() => BrowserLaunch.FromPlan(clarify)).Message);
+        Assert.Throws<SafetyException>(() => BrowserLaunch.FromPlan(clarify with { Address = "https://example.org" }));
+        Assert.Throws<SafetyException>(() => BrowserLaunch.FromPlan(Decision("https://example.org") with { Provider = "mock" }));
+        Assert.Throws<SafetyException>(() => BrowserLaunch.FromPlan(Decision("https://example.org") with { SchemaVersion = 2 }));
+        Assert.Throws<SafetyException>(() => BrowserLaunch.FromPlan(Decision("https://example.org") with { Browser = "cmd.exe" }));
+    }
 }

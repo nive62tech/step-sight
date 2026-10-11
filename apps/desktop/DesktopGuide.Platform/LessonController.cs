@@ -3,6 +3,8 @@ using System.Diagnostics;
 
 namespace DesktopGuide.Platform;
 
+public enum GuideMarkerState { Off, Locating, Visible, MissingTarget, ScreenChanged, FocusRequired, WaitingForPage, BrowserTargetUnconfirmed }
+
 public sealed class LessonController : IDisposable
 {
     private readonly IScreenCapture capture;
@@ -14,6 +16,7 @@ public sealed class LessonController : IDisposable
     private readonly ILocalSessionStore store;
     private readonly IAudioCapture microphone;
     private readonly ISpeechPlayback speech;
+    private readonly IBrowserTargetResolver browserTargets;
     private readonly SemaphoreSlim turnGate = new(1);
     private readonly object sessionGate = new();
     private readonly System.Threading.Timer privacyTimer;
@@ -31,6 +34,12 @@ public sealed class LessonController : IDisposable
     private int eventSequence;
     private volatile bool disposed;
     private int polling;
+    private int restoringMarker;
+    public GuideMarkerState MarkerState { get; private set; }
+    public bool HasCurrentInstruction => previous is not null;
+    public bool CanLocateCurrentTarget => previous is not null && previous.ExpectedUserAction != "wait";
+    public event Action<GuideMarkerState>? MarkerStateChanged;
+    private void SetMarkerState(GuideMarkerState value) { MarkerState = value; MarkerStateChanged?.Invoke(value); }
     private DateTimeOffset lastAutomaticObservation = DateTimeOffset.MinValue;
     public PermissionSupervisor Permissions { get; } = new();
     public LessonState State => machine.State;
@@ -47,16 +56,18 @@ public sealed class LessonController : IDisposable
 
     public LessonController(IScreenCapture capture, IWindowTracker tracker, IUserActivityObserver activity,
         IPointerGuide pointer, IInputExecutor executor, IGuidanceApiClient api, ILocalSessionStore store,
-        IAudioCapture microphone, ISpeechPlayback speech, PermissionSupervisor permissions)
+        IAudioCapture microphone, ISpeechPlayback speech, PermissionSupervisor permissions, IBrowserTargetResolver? browserTargets = null)
     {
         (this.capture, this.tracker, this.activity, this.pointer, this.executor, this.api, this.store, this.microphone, this.speech)
             = (capture, tracker, activity, pointer, executor, api, store, microphone, speech);
         Permissions = permissions;
+        this.browserTargets = browserTargets ?? new NoBrowserTargetResolver();
         WireMachine();
         activity.Activity += LearnerActivity;
         activity.EmergencyStop += StopLocal;
         activity.SessionUnavailable += Unavailable;
         activity.Takeover += Takeover;
+        pointer.VisibilityLost += MarkerVisibilityLost;
         privacyTimer = new(_ =>
         {
             if (disposed) return;
@@ -66,6 +77,8 @@ public sealed class LessonController : IDisposable
             {
                 if (DateTimeOffset.UtcNow - lastActivity > TimeSpan.FromMinutes(5)) Interrupt(LessonState.PrivacyPaused);
                 else if (source is not null && tracker.IsLocked) Interrupt(LessonState.PrivacyPaused);
+                else if (State == LessonState.WaitingForLearner && !pointAllowed && MarkerState == GuideMarkerState.FocusRequired
+                         && source is not null && tracker.IsForegroundAndVisible(source)) _ = RestoreVisualMarkerAsync();
                 else if (source is not null && frame is not null && tracker.IsForegroundAndVisible(source)
                          && DateTimeOffset.UtcNow - lastAutomaticObservation > TimeSpan.FromSeconds(5)) _ = PollForChangeAsync();
             }
@@ -116,11 +129,14 @@ public sealed class LessonController : IDisposable
         if (source is null || session is null || State is LessonState.Stopped or LessonState.Paused or LessonState.PrivacyPaused or LessonState.NetworkInterrupted or LessonState.Completed) return;
         if (!await turnGate.WaitAsync(0)) return;
         var epoch = Permissions.Epoch;
+        var locating = eventKind == "locate";
+        var locateAfterTurn = false;
         try
         {
+            if (locating && !CanLocateCurrentTarget) return;
             var token = Permissions.Cancellation;
             Permissions.RequireObservation(source.ScopeId);
-            pointer.Hide(); speech.Stop(); proposal = null; ProposalChanged?.Invoke(null);
+            pointer.Hide(); SetMarkerState(GuideMarkerState.Locating); speech.Stop(); proposal = null; ProposalChanged?.Invoke(null);
             if (State is not (LessonState.Observing or LessonState.Verifying)) machine.Transition(LessonState.Observing);
             var timer = Stopwatch.StartNew();
             var current = await capture.CaptureAsync(source, Masks, token);
@@ -133,6 +149,11 @@ public sealed class LessonController : IDisposable
             var roundtripMs = timer.Elapsed.TotalMilliseconds; timer.Restart();
             if (epoch != Permissions.Epoch) return;
             ValidateResponse(result, localSession, current);
+            if (locating && (result.Step is not { } located || previous is null || located.Id != previous.Id
+                || located.Instruction != previous.Instruction || located.ExpectedUserAction != previous.ExpectedUserAction
+                || !located.Postconditions.SequenceEqual(previous.Postconditions) || result.Completed
+                || result.Verification is not null || result.ActionProposal is not null))
+                throw new SafetyException("Target refresh tried to change the current task. Stop and start a new guide.");
             var timings = new Dictionary<string, double> { ["capture_preprocess"] = captureMs, ["roundtrip"] = roundtripMs,
                 ["local_validation"] = timer.Elapsed.TotalMilliseconds };
             if (result.TimingsMs is not null) foreach (var pair in result.TimingsMs) timings["server_" + pair.Key] = pair.Value;
@@ -143,15 +164,21 @@ public sealed class LessonController : IDisposable
                 session = session with { CompletedSteps = session.CompletedSteps + 1 };
                 if (savedProgress) store.SaveSummary(lessonId, session.CompletedSteps);
             }
-            if (previous is not null && result.Verification?.Status != "CONFIRMED")
+            if (previous is not null && result.Verification?.Status != "CONFIRMED" && !locating)
             {
-                machine.Transition(LessonState.Recovering);
+                var waiting = previous.ExpectedUserAction == "wait";
+                SetMarkerState(waiting ? GuideMarkerState.WaitingForPage : GuideMarkerState.ScreenChanged);
+                machine.Transition(waiting ? LessonState.WaitingForApplication : LessonState.Recovering);
                 Presentation?.Invoke(result.Verification?.RecoverySuggestion ?? "The result is uncertain. Ask for help or try again.",
-                    "Previous action has not been verified.", result.Verification?.Status ?? "UNCERTAIN");
+                    "Previous action has not been verified.", waiting ? "Waiting for the page" : "Let's try again");
+                // NOT_YET is not task completion, but it must not leave the user without a
+                // target. Locate this SAME instruction on a fresh image after releasing the gate.
+                locateAfterTurn = !waiting && mode == InteractionMode.Guide && result.Verification?.Status == "NOT_YET";
                 return;
             }
             if (result.Completed)
             {
+                SetMarkerState(GuideMarkerState.Off);
                 machine.Transition(LessonState.Completed); previous = null;
                 Presentation?.Invoke("Lesson complete", "The final visible outcome was confirmed by the configured provider.", result.Provider);
                 Permissions.Revoke(); capture.StopCapture(); pointer.Hide(); activity.ObservationEnabled = false; return;
@@ -161,20 +188,45 @@ public sealed class LessonController : IDisposable
             machine.Transition(LessonState.Presenting);
             Presentation?.Invoke(previous.Instruction, previous.Explanation, result.Provider == "mock" ? "MOCK — screen not interpreted" : "Screen-grounded guidance");
             ProposalChanged?.Invoke(proposal);
-            machine.Transition(LessonState.WaitingForLearner);
             lastActivity = DateTimeOffset.UtcNow;
-            if (mode != InteractionMode.Practice) await ShowWhereAsync();
+            if (previous.ExpectedUserAction == "wait")
+            {
+                proposal = null; ProposalChanged?.Invoke(null);
+                SetMarkerState(GuideMarkerState.WaitingForPage); Notice?.Invoke("");
+                machine.Transition(LessonState.WaitingForApplication);
+            }
+            else
+            {
+                machine.Transition(LessonState.WaitingForLearner);
+                if (mode != InteractionMode.Practice) await ShowWhereAsync();
+                locateAfterTurn = mode != InteractionMode.Practice && !locating && MarkerState is GuideMarkerState.MissingTarget or GuideMarkerState.ScreenChanged or GuideMarkerState.BrowserTargetUnconfirmed;
+            }
             if (NarrationEnabled) await NarrateAsync(previous.Instruction + " " + previous.Explanation, epoch);
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) when (epoch != Permissions.Epoch || Permissions.Cancellation.IsCancellationRequested) { }
+        catch (OperationCanceledException)
+        {
+            pointer.Hide(); SetMarkerState(previous is null ? GuideMarkerState.Off : GuideMarkerState.ScreenChanged);
+            Notice?.Invoke("Live image analysis timed out. Use Check screen to retry, or Find click target for the current instruction.");
+            if (State is LessonState.Planning or LessonState.Verifying) machine.Transition(LessonState.Recovering);
+        }
         catch (SafetyException ex)
         {
+            if (epoch != Permissions.Epoch) return;
             Permissions.CancelPendingInput(); pointer.Hide(); speech.Stop(); proposal = null; ProposalChanged?.Invoke(null);
+            SetMarkerState(previous is null ? GuideMarkerState.Off : GuideMarkerState.ScreenChanged);
             Notice?.Invoke(ex.Message);
             if (State is LessonState.Planning or LessonState.Verifying) machine.Transition(LessonState.Recovering);
         }
         catch (Exception ex) { Interrupt(LessonState.NetworkInterrupted); Notice?.Invoke(Friendly(ex)); }
-        finally { turnGate.Release(); }
+        finally
+        {
+            turnGate.Release();
+            // Runs even when verification took the early-return path above. A locate call
+            // never schedules another locate, verifies success, or advances the current step.
+            if (locateAfterTurn && epoch == Permissions.Epoch && State is LessonState.WaitingForLearner or LessonState.Recovering)
+                await ObserveTurnAsync("locate");
+        }
     }
 
     private static void ValidateResponse(TurnResponse result, SessionView localSession, ScreenFrame current)
@@ -200,7 +252,11 @@ public sealed class LessonController : IDisposable
     public async Task ShowWhereAsync()
     {
         if (source is null || frame is null || previous is null || State != LessonState.WaitingForLearner) return;
-        if (previous.Target is null) { Notice?.Invoke("The live analysis couldn't locate a reliable target. Follow the explanation or check the screen again."); return; }
+        if (previous.Target is null)
+        {
+            SetMarkerState(GuideMarkerState.MissingTarget);
+            Notice?.Invoke("No click target was identified in this image. Read the instruction, or use Find click target for a fresh image."); return;
+        }
         var selected = source; var original = frame; var step = previous;
         var epoch = Permissions.Epoch; var token = Permissions.Cancellation;
         pointer.Hide();
@@ -211,6 +267,7 @@ public sealed class LessonController : IDisposable
             machine.Transition(LessonState.Pointing);
             if (!tracker.IsForegroundAndVisible(selected))
             {
+                SetMarkerState(GuideMarkerState.FocusRequired);
                 Notice?.Invoke("Switch back to your selected window within five seconds. The guide will point once it is in front.");
                 var focusDeadline = Stopwatch.StartNew();
                 while (!tracker.IsForegroundAndVisible(selected))
@@ -222,15 +279,35 @@ public sealed class LessonController : IDisposable
             token.ThrowIfCancellationRequested();
             var fresh = await capture.CaptureAsync(selected, Masks, token);
             token.ThrowIfCancellationRequested(); if (epoch != Permissions.Epoch) return;
-            if (!tracker.IsGuidanceTargetCurrent(original, fresh, step.Target!))
-            { Notice?.Invoke("Screen changed. Reobserve before pointing."); return; }
+            var target = step.Target!;
+            var browser = BrowserTargetResolution.Unavailable;
+            // Sandbox evaluation stays image-only. Browser inspection is a local, read-only
+            // cross-check; it must never rewrite the server step or authorize input proposals.
+            if (lessonId != "sandbox" && mode == InteractionMode.Guide)
+            {
+                browser = await browserTargets.ResolveAsync(selected, original, step, token);
+                token.ThrowIfCancellationRequested(); if (epoch != Permissions.Epoch) return;
+                if (browser.Status == BrowserTargetStatus.Rejected)
+                { SetMarkerState(GuideMarkerState.BrowserTargetUnconfirmed); Notice?.Invoke(browser.Message); return; }
+                if (browser.Status == BrowserTargetStatus.Matched)
+                {
+                    target = browser.Target ?? throw new SafetyException("Browser inspection returned no target.");
+                    target.Validate(original.Geometry.Id);
+                    // Re-capture after inspection. Validate the corrected area, not the model's
+                    // original approximate area, and retain the exact image/epoch/scope guards.
+                    fresh = await capture.CaptureAsync(selected, Masks, token);
+                    token.ThrowIfCancellationRequested(); if (epoch != Permissions.Epoch) return;
+                }
+            }
+            if (!tracker.IsGuidanceTargetCurrent(original, fresh, target))
+            { SetMarkerState(GuideMarkerState.ScreenChanged); Notice?.Invoke("The screen changed before the cursor could appear. Use Find click target to locate this step on a fresh image."); return; }
             pointer.SetHint(step.Instruction, step.ExpectedUserAction);
-            if (pointAllowed) await pointer.PointAsync(fresh, step.Target!, selected, token);
-            else await pointer.ShowVisualAsync(fresh, step.Target!, selected, token);
-            if (epoch == Permissions.Epoch) Notice?.Invoke("");
+            if (pointAllowed) await pointer.PointAsync(fresh, target, selected, token);
+            else await pointer.ShowVisualAsync(fresh, target, selected, token);
+            if (epoch == Permissions.Epoch) { SetMarkerState(GuideMarkerState.Visible); Notice?.Invoke(browser.Status == BrowserTargetStatus.Matched ? browser.Message : ""); }
         }
         catch (OperationCanceledException) { }
-        catch (SafetyException ex) { Notice?.Invoke(ex.Message); }
+        catch (SafetyException ex) { if (epoch == Permissions.Epoch) { SetMarkerState(GuideMarkerState.FocusRequired); Notice?.Invoke(ex.Message); } }
         finally { if (epoch == Permissions.Epoch && State == LessonState.Pointing) machine.Transition(LessonState.WaitingForLearner); }
     }
 
@@ -315,7 +392,7 @@ public sealed class LessonController : IDisposable
     private void LearnerActivity()
     {
         lastActivity = DateTimeOffset.UtcNow;
-        if (source is null || !tracker.IsForegroundAndVisible(source) || State is not (LessonState.WaitingForLearner or LessonState.Recovering)) return;
+        if (source is null || !tracker.IsForegroundAndVisible(source) || State is not (LessonState.WaitingForLearner or LessonState.WaitingForApplication or LessonState.Recovering)) return;
         lock (sessionGate)
         {
             debounce?.Cancel(); debounce?.Dispose(); debounce = new CancellationTokenSource();
@@ -348,10 +425,23 @@ public sealed class LessonController : IDisposable
         finally { Interlocked.Exchange(ref polling, 0); }
     }
     private void Takeover() { Interrupt(LessonState.Paused); Notice?.Invoke("You took control. Resume locally when ready."); }
+    private void MarkerVisibilityLost()
+    {
+        if (State is LessonState.WaitingForLearner or LessonState.Pointing) SetMarkerState(GuideMarkerState.FocusRequired);
+    }
+    private async Task RestoreVisualMarkerAsync()
+    {
+        if (Interlocked.Exchange(ref restoringMarker, 1) != 0) return;
+        var epoch = Permissions.Epoch;
+        try { await ShowWhereAsync(); }
+        catch (Exception) { if (epoch == Permissions.Epoch) SetMarkerState(GuideMarkerState.FocusRequired); }
+        finally { Interlocked.Exchange(ref restoringMarker, 0); }
+    }
     private void Unavailable() => Interrupt(LessonState.PrivacyPaused);
     private void Interrupt(LessonState state)
     {
         Permissions.Revoke(); capture.StopCapture(); pointer.Hide(); speech.Stop(); microphone.Cancel(); executor.ReleaseHeldControls();
+        SetMarkerState(GuideMarkerState.Off);
         activity.ObservationEnabled = false;
         proposal = null; ProposalChanged?.Invoke(null); debounce?.Cancel();
         if (State is not (LessonState.Stopped or LessonState.Idle or LessonState.Completed)) machine.Transition(state);
@@ -405,5 +495,6 @@ public sealed class LessonController : IDisposable
         disposed = true; StopLocal(); privacyTimer.Dispose(); debounce?.Cancel();
         activity.Activity -= LearnerActivity; activity.EmergencyStop -= StopLocal;
         activity.Takeover -= Takeover; activity.SessionUnavailable -= Unavailable;
+        pointer.VisibilityLost -= MarkerVisibilityLost;
     }
 }

@@ -6,10 +6,12 @@ using DesktopGuide.Platform;
 
 namespace DesktopGuide.App.Services;
 
-public sealed class GuidanceApiClient(PublicConfiguration config, CognitoLogin login) : IGuidanceApiClient, IDisposable
+public sealed class GuidanceApiClient(PublicConfiguration config, ILoginSession login, HttpClient? transport = null) : IGuidanceApiClient, IBrowserPlanner, IDisposable
 {
-    private readonly HttpClient http = new() { BaseAddress = new Uri(config.ApiOrigin), Timeout = TimeSpan.FromSeconds(45) };
-    private async Task<HttpResponseMessage> Send(HttpRequestMessage request, CancellationToken cancellation)
+    // Must exceed CloudFront's 60s origin timeout and the API's 35s total provider budget.
+    private readonly HttpClient http = transport ?? new() { BaseAddress = new Uri(config.ApiOrigin), Timeout = TimeSpan.FromSeconds(65) };
+    private sealed class LostTurnResponse : Exception;
+    private async Task<HttpResponseMessage> Send(HttpRequestMessage request, CancellationToken cancellation, bool recoverTurn = false)
     {
         var token = await login.GetAccessAsync(cancellation);
         if (token is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -17,12 +19,18 @@ public sealed class GuidanceApiClient(PublicConfiguration config, CognitoLogin l
         if (!response.IsSuccessStatusCode)
         {
             var status = response.StatusCode; response.Dispose();
-            throw new HttpRequestException(status switch
+            if (recoverTurn && status is System.Net.HttpStatusCode.BadGateway or System.Net.HttpStatusCode.GatewayTimeout or System.Net.HttpStatusCode.ServiceUnavailable)
+                throw new LostTurnResponse();
+            throw new SafetyException(status switch
             {
                 System.Net.HttpStatusCode.Conflict => "Session or target changed. Pause and resume to reobserve.",
                 System.Net.HttpStatusCode.TooManyRequests => "Usage limit reached. Progress is preserved; continue manually.",
                 System.Net.HttpStatusCode.Unauthorized => "Sign-in expired. Local input is disarmed; sign in again.",
-                _ => "The service could not process this request. Pause and check configuration."
+                System.Net.HttpStatusCode.BadGateway => "The AI response didn't match the current image. Use Check screen to retry, or Find click target for the current instruction.",
+                System.Net.HttpStatusCode.ServiceUnavailable => "Live image analysis timed out or is unavailable. Use Check screen to retry, or Find click target for the current instruction.",
+                System.Net.HttpStatusCode.GatewayTimeout => "The gateway timed out waiting for the live image analysis. Use Check screen to retry.",
+                System.Net.HttpStatusCode.BadRequest or System.Net.HttpStatusCode.UnprocessableEntity => "The screen request was rejected. Stop and start a new guide; report HTTP " + (int)status + " if it repeats.",
+                _ => "The service could not process this request (HTTP " + (int)status + "). Pause and retry."
             });
         }
         return response;
@@ -47,6 +55,11 @@ public sealed class GuidanceApiClient(PublicConfiguration config, CognitoLogin l
         return WireJson.Read<T>(await ReadBounded(response, cancellation));
     }
     public Task<SessionView> CreateAsync(SessionCreate request, CancellationToken cancellation) => Json<SessionView>(HttpMethod.Post, "/v1/sessions", request, cancellation);
+    public async Task<BrowserPlanResponse> PlanAsync(string goal, CancellationToken cancellation)
+    {
+        try { return await Json<BrowserPlanResponse>(HttpMethod.Post, "/v1/browser/plan", new BrowserPlanRequest(1, goal), cancellation); }
+        catch (SafetyException) { throw new SafetyException("The agent couldn't plan the starting website. Check your sign-in and connection, then retry."); }
+    }
     public Task<SessionView> GetAsync(Guid session, CancellationToken cancellation) => Json<SessionView>(HttpMethod.Get, $"/v1/sessions/{session}", null, cancellation);
     public Task<SessionView> IntentAsync(Guid session, string intent, int version, CancellationToken cancellation)
     {
@@ -61,8 +74,36 @@ public sealed class GuidanceApiClient(PublicConfiguration config, CognitoLogin l
         multipart.Add(new StringContent(JsonSerializer.Serialize(metadata, WireJson.Options), Encoding.UTF8, "application/json"), "metadata");
         var image = new ByteArrayContent(frame.Png); image.Headers.ContentType = new("image/png"); multipart.Add(image, "screenshot", "frame.png");
         request.Content = multipart;
-        using var response = await Send(request, cancellation);
-        return WireJson.Read<TurnResponse>(await ReadBounded(response, cancellation));
+        try
+        {
+            using var response = await Send(request, cancellation, recoverTurn: true);
+            return WireJson.Read<TurnResponse>(await ReadBounded(response, cancellation));
+        }
+        catch (LostTurnResponse) { return await RecoverTurnAsync(session, metadata.RequestId, cancellation); }
+        catch (HttpRequestException) { return await RecoverTurnAsync(session, metadata.RequestId, cancellation); }
+        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
+        { return await RecoverTurnAsync(session, metadata.RequestId, cancellation); }
+    }
+    private async Task<TurnResponse> RecoverTurnAsync(Guid session, Guid requestId, CancellationToken cancellation)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        deadline.CancelAfter(TimeSpan.FromSeconds(40));
+        try
+        {
+            while (true)
+            {
+                deadline.Token.ThrowIfCancellationRequested();
+                using var request = new HttpRequestMessage(HttpMethod.Get, $"/v1/sessions/{session}/turns/{requestId}");
+                using var response = await Send(request, deadline.Token);
+                if (response.StatusCode == System.Net.HttpStatusCode.OK)
+                    return WireJson.Read<TurnResponse>(await ReadBounded(response, deadline.Token));
+                if (response.StatusCode != System.Net.HttpStatusCode.Accepted) break;
+                await Task.Delay(750, deadline.Token);
+            }
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
+        catch (Exception ex) when (ex is OperationCanceledException or HttpRequestException or SafetyException) { }
+        throw new SafetyException("The analysis result could not be recovered. Pause and resume to synchronize, then check the screen again.");
     }
     public async Task<QuestionResponse> QuestionAsync(Guid session, int version, string text, CancellationToken cancellation)
     {

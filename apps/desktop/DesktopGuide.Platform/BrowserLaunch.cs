@@ -5,22 +5,27 @@ namespace DesktopGuide.Platform;
 
 public sealed record BrowserLaunch(string Browser, Uri Address, string LessonId)
 {
-    public static BrowserLaunch FromPrompt(string prompt)
+    public static BrowserLaunch FromPlan(BrowserPlanResponse plan)
     {
-        if (string.IsNullOrWhiteSpace(prompt)) throw new SafetyException("Describe what you want to do first.");
-        var browsers = new[] { "chrome", "edge", "firefox" }.Where(b => Regex.IsMatch(prompt, $@"\b{b}\b", RegexOptions.IgnoreCase)).ToArray();
-        if (browsers.Length > 1) throw new SafetyException("Name one browser for this task: Chrome, Edge or Firefox.");
-        var browser = browsers.FirstOrDefault() ?? "chrome";
-        var links = Regex.Matches(prompt, @"https?://[^\s<>""']+", RegexOptions.IgnoreCase);
-        if (links.Count > 1) throw new SafetyException("Provide one starting website in your prompt.");
-        var address = links.Count == 1 ? links[0].Value.TrimEnd('.', ',', ')') :
-            Regex.IsMatch(prompt, @"\brailway\b", RegexOptions.IgnoreCase) ? "https://railway.com/dashboard" : null;
-        if (address is null) throw new SafetyException("Include the starting https:// website in your prompt, or ask to open Railway.");
-        if (!Uri.TryCreate(address, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps ||
-            !string.IsNullOrEmpty(uri.UserInfo) || uri.IsLoopback || uri.HostNameType != UriHostNameType.Dns || !uri.IsDefaultPort)
-            throw new SafetyException("Use a public HTTPS website without credentials or a custom port.");
-        return new(browser, uri, uri.Host is "railway.com" or "railway.app" || uri.Host.EndsWith(".railway.com", StringComparison.OrdinalIgnoreCase) ? "railway" : "browser");
+        if (plan.SchemaVersion != 1 || plan.Provider != "gemini" || plan.Browser is not ("chrome" or "edge" or "firefox")
+            || string.IsNullOrWhiteSpace(plan.Message) || plan.Message.Length > 500)
+            throw new SafetyException("The agent returned an invalid starting decision. Try again.");
+        if (plan.Decision == "clarify" && plan.Address is null) throw new SafetyException(plan.Message);
+        if (plan.Decision != "open_browser" || string.IsNullOrEmpty(plan.Address) || plan.Address.Length > 2048
+            || plan.Address.Any(c => char.IsWhiteSpace(c) || char.IsControl(c) || c == '\\')
+            || !Uri.TryCreate(plan.Address, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps
+            || !string.IsNullOrEmpty(uri.UserInfo) || uri.IsLoopback || uri.HostNameType != UriHostNameType.Dns || !uri.IsDefaultPort
+            || !Regex.IsMatch(uri.Host, @"^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$")
+            || new[] { ".localhost", ".local", ".internal", ".lan", ".home", ".invalid", ".test" }.Any(s => uri.Host.EndsWith(s, StringComparison.OrdinalIgnoreCase)))
+            throw new SafetyException("The agent couldn't establish a public HTTPS starting website. Try describing the destination more clearly.");
+        // The model chooses the destination. Every site uses the same live image loop.
+        return new(plan.Browser, uri, "browser");
     }
+}
+
+public interface IBrowserPlanner
+{
+    Task<BrowserPlanResponse> PlanAsync(string goal, CancellationToken cancellation);
 }
 
 public interface IBrowserLauncher

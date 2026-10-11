@@ -6,7 +6,7 @@ provider billing cutoff. Never place requests, responses, media or tokens here.
 import json
 import os
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -46,7 +46,7 @@ class LiveBudget:
                 raise ValueError("Approved synthetic validation budget exhausted")
             identifier = str(uuid4())
             ledger["calls"].append({"id": identifier, "purpose": purpose[:64],
-                "date": datetime.now(UTC).isoformat(), "status": "reserved_or_unknown",
+                "date": datetime.now(timezone.utc).isoformat(), "status": "reserved_or_unknown",
                 "estimated_usd": self.RESERVATION_USD})
             return identifier
 
@@ -61,3 +61,17 @@ class LiveBudget:
             call.update(status="reported", input_tokens=input_tokens, output_tokens=output_tokens,
                         estimated_usd=cost)
         return cost
+
+    def release_unused(self, identifier: str, evidence: str):
+        """Release only a reserved attempt proved unissued by an audited call ledger.
+
+        A timeout, rejection, or missing usage is NOT proof of an unused attempt.
+        Keep those reservations. Evidence must reference the checked audit record.
+        """
+        if not evidence.strip():
+            raise ValueError("Unused attempts require audit evidence")
+        with self._ledger() as ledger:
+            call = next(call for call in ledger["calls"] if call["id"] == identifier)
+            if call["status"] != "reserved_or_unknown":
+                raise ValueError("Usage was already reconciled")
+            call.update(status="not_attempted", estimated_usd=0, evidence=evidence[:512])

@@ -10,6 +10,30 @@ namespace DesktopGuide.AppTests;
 
 public sealed class OnboardingTests
 {
+    [Fact] public void YourTurnKeepsInstructionAndFailureVisibleInCompactCard()
+    {
+        using var f = new Fixture();
+        f.Vm.LessonState = LessonState.WaitingForLearner;
+        f.Vm.Instruction = "Click the visible Settings button.";
+        f.Vm.GuideMarkerState = GuideMarkerState.MissingTarget;
+        Assert.True(f.Vm.HasCompactCard); Assert.Equal(f.Vm.Instruction, f.Vm.CompactInstruction);
+        Assert.Contains("No visible", f.Vm.MarkerStatus);
+        f.Vm.Notice = "The image service is unavailable. Retry Find click target.";
+        Assert.True(f.Vm.HasNotice); Assert.True(f.Vm.HasCompactCard);
+        f.Vm.LessonState = LessonState.Verifying;
+        Assert.Contains("Reading", f.Vm.CompactInstruction);
+    }
+    [Theory] [InlineData(0, 1.0)] [InlineData(-1920, 1.5)] [InlineData(0, 2.0)]
+    public void CompanionMovesAwayFromTargetAtDifferentDpi(int monitorX, double scale)
+    {
+        var screen = new PixelRect(monitorX, 0, 1920, 1080);
+        var target = new PhysicalRect(monitorX + 1720, 980, 100, 50);
+        var size = new PixelSize((int)(374 * scale), (int)(340 * scale));
+        var position = CompanionPlacement.AvoidTarget(new(screen.Right-size.Width-16,screen.Bottom-size.Height-16),size,screen,target);
+        var card = new PixelRect(position,size);
+        Assert.False(card.Intersects(new PixelRect(target.Left-36,target.Top-36,target.Width+72,target.Height+72)));
+        Assert.True(screen.Contains(card));
+    }
     private sealed class Login : ILoginSession
     {
         public bool SignedIn { get; private set; }
@@ -43,13 +67,14 @@ public sealed class OnboardingTests
     {
         public Login Login = new(); public Connection Connection = new();
         public LessonController Controller; public MainViewModel Vm;
-        public Fixture(IBrowserLauncher? launcher = null)
+        public Fixture(IBrowserLauncher? launcher = null, IBrowserPlanner? planner = null)
         {
             var env = new PreviewEnvironment(); var permissions = new PermissionSupervisor();
             var pointer = new WindowsPointer(permissions,env,env);
             Controller = new(env,env,env,pointer,env,new Api(),env,env,env,permissions);
             Vm = new(Controller,Login,new("https://example.invalid","cognito","https://cognito-idp.ap-south-1.amazonaws.com/test","client","https://example.invalid","openid","http://localhost:43827/callback/","Desktop Guide","test"),
-                pointer,env,Connection,action=>action(),launcher);
+                pointer,env,Connection,action=>action(),launcher,planner ?? new Planner());
+            Vm.Goal = "Help me with my website task";
         }
         public void Dispose() => Controller.Dispose();
     }
@@ -60,6 +85,14 @@ public sealed class OnboardingTests
         public TaskCompletionSource<CaptureSource> Complete = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task<CaptureSource> OpenAsync(BrowserLaunch plan, CancellationToken cancellation)
         { Opens++; Plan = plan; return Complete.Task; } // Deliberately ignores Stop to test late completion.
+    }
+    private sealed class Planner : IBrowserPlanner
+    {
+        public BrowserPlanResponse Result = new(1, "open_browser", "edge", "https://example.org/", "Open the site.", "gemini");
+        public TaskCompletionSource<BrowserPlanResponse>? Pending;
+        public string? Goal;
+        public Task<BrowserPlanResponse> PlanAsync(string goal, CancellationToken cancellation)
+        { Goal = goal; return Pending?.Task ?? Task.FromResult(Result); }
     }
     [Fact] public async Task StopDuringBrowserLaunchRejectsLateWindowAndNeverArmsCapture()
     {
@@ -73,6 +106,45 @@ public sealed class OnboardingTests
         launcher.Complete.SetResult(new(Guid.NewGuid(),Guid.NewGuid(),"new browser", "window")); await pending;
         Assert.False(f.Vm.ObservationConsent); Assert.Null(f.Vm.SelectedSource);
         Assert.Equal(LessonState.Stopped, f.Controller.State);
+    }
+    [Fact] public async Task IrctcPromptReachesBrowserLaunchWithoutRequestingAUrl()
+    {
+        var launcher = new Launcher(); var planner = new Planner { Result = new(1, "open_browser", "chrome", "https://www.irctc.co.in/nget/train-search", "Open the train booking site.", "gemini") };
+        using var f = new Fixture(launcher, planner);
+        await f.Vm.SignInCommand.ExecuteAsync(null);
+        f.Vm.Goal = "Open Chrome and guide me to book a train ticket on irtc";
+        var pending = f.Vm.ContinueSetupCommand.ExecuteAsync(null);
+        Assert.Equal(1, launcher.Opens);
+        Assert.Equal("https://www.irctc.co.in/nget/train-search", launcher.Plan!.Address.AbsoluteUri);
+        Assert.Equal("browser", launcher.Plan.LessonId);
+        Assert.Equal(f.Vm.Goal, planner.Goal);
+        Assert.False(f.Vm.ObservationConsent); Assert.False(f.Vm.DemonstrationConsent);
+        f.Vm.StopCommand.Execute(null);
+        launcher.Complete.SetResult(new(Guid.NewGuid(), Guid.NewGuid(), "IRCTC", "window"));
+        await pending;
+        Assert.Equal(LessonState.Stopped, f.Controller.State);
+        Assert.False(f.Vm.ObservationConsent);
+    }
+    [Fact] public async Task StopDuringIntentPlanningRejectsLatePlanBeforeOpeningOrCapture()
+    {
+        var launcher = new Launcher(); var planner = new Planner { Pending = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        using var f = new Fixture(launcher, planner);
+        await f.Vm.SignInCommand.ExecuteAsync(null);
+        f.Vm.Goal = "Help with an arbitrary website task";
+        var pending = f.Vm.ContinueSetupCommand.ExecuteAsync(null);
+        Assert.Equal(f.Vm.Goal, planner.Goal); Assert.Equal(0, launcher.Opens);
+        f.Vm.StopCommand.Execute(null);
+        planner.Pending.SetResult(planner.Result); await pending;
+        Assert.Equal(0, launcher.Opens); Assert.False(f.Vm.ObservationConsent); Assert.Null(f.Vm.SelectedSource);
+    }
+    [Fact] public async Task PlannerClarificationStaysVisibleWithoutOpeningOrCapture()
+    {
+        var launcher = new Launcher(); var planner = new Planner { Result = new(1, "clarify", "chrome", null, "Which website do you mean?", "gemini") };
+        using var f = new Fixture(launcher, planner);
+        await f.Vm.SignInCommand.ExecuteAsync(null);
+        await f.Vm.ContinueSetupCommand.ExecuteAsync(null);
+        Assert.Equal(0, launcher.Opens); Assert.Contains("Which website", f.Vm.Notice);
+        Assert.False(f.Vm.ObservationConsent); Assert.False(f.Vm.DemonstrationConsent);
     }
     [Fact] public async Task StopDuringPromptSignInPreventsAutomaticLaunch()
     {

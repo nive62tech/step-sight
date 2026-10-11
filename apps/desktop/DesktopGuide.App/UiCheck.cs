@@ -79,7 +79,9 @@ internal static class UiCheck
                     using var companionBitmap = new RenderTargetBitmap(new PixelSize((int)companion.Width,(int)companion.Height),new Vector(96,96));
                     companionBitmap.Render(companion); companionBitmap.Save(Path.Combine(directory,$"companion-{scene}.png"),PngBitmapEncoderOptions.Default);
                     companion.Collapse(); await Task.Delay(100);
-                    using var dockBitmap = new RenderTargetBitmap(new PixelSize(276,72),new Vector(96,96));
+                    if (vm.HasLesson && (companion.Height <= 72 || !companion.FindControl<ScrollViewer>("CompactBody")!.IsVisible))
+                        throw new InvalidOperationException("The active instruction must stay visible in the collapsed companion.");
+                    using var dockBitmap = new RenderTargetBitmap(new PixelSize((int)companion.Width,(int)companion.Height),new Vector(96,96));
                     dockBitmap.Render(companion); dockBitmap.Save(Path.Combine(directory,$"dock-{scene}.png"),PngBitmapEncoderOptions.Default);
                     companion.Close();
                     var outline = HighlightWindow.CreateOutline(); outline.Width = 200; outline.Height = 64;
@@ -121,13 +123,27 @@ internal static class UiCheck
             var fixture = Directory.Exists("artifacts/evaluation") ? Directory.GetFiles("artifacts/evaluation","*.png",SearchOption.AllDirectories).FirstOrDefault() : null;
             if (fixture is not null) vm.PreviewImage=new Bitmap(fixture);
         }
-        if (scene is "lesson" or "paused")
+        if (scene is "lesson" or "paused" or "missing-target" or "model-error" or "loading-page")
         {
             vm.ActiveView="lesson"; vm.LessonState=scene=="paused" ? LessonState.PrivacyPaused : LessonState.WaitingForLearner;
             vm.Status=scene=="paused" ? "Paused for privacy" : "Your turn";
-            vm.Instruction="Check that you're in the right Railway workspace.";
+            vm.Instruction="Click the workspace menu at the top left to choose your Railway workspace.";
             vm.Explanation="Before creating anything, review which workspace is selected and whether it has available project capacity. You handle billing and the final deployment.";
             vm.ObservationConsent=true; vm.PointerConsent=false;
+            vm.GuideMarkerState = scene == "missing-target" ? GuideMarkerState.MissingTarget : GuideMarkerState.Visible;
+            if (scene == "missing-target") vm.Notice="No click target was identified in this image. Use Find click target for a fresh image.";
+            if (scene == "model-error")
+            {
+                vm.LessonState=LessonState.Recovering; vm.Status="Let's try again";
+                vm.GuideMarkerState=GuideMarkerState.ScreenChanged;
+                vm.Notice="The image service timed out or is unavailable. Use Find click target to retry this instruction.";
+            }
+            if (scene == "loading-page")
+            {
+                vm.Instruction="Wait for Railway to finish loading. I'll inspect the updated page and show the next click.";
+                vm.LessonState=LessonState.WaitingForApplication; vm.Status="Waiting for the page";
+                vm.GuideMarkerState=GuideMarkerState.WaitingForPage;
+            }
         }
         if (scene == "settings") vm.ActiveView="settings";
         if (scene == "error") vm.Notice="Couldn't reach the lesson service. Your account is signed in; retry the connection in Preferences.";

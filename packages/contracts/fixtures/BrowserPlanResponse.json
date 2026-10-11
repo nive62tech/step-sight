@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "decision": "open_browser",
+  "browser": "chrome",
+  "address": "https://example.org/",
+  "message": "Open the starting website.",
+  "provider": "gemini"
+}

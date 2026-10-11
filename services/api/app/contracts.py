@@ -1,6 +1,9 @@
+import ipaddress
+import re
 from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Literal
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
@@ -164,7 +167,7 @@ class TurnRequest(Contract):
     request_id: UUID
     session_version: int = Field(ge=0)
     observation: Observation
-    event_kind: Literal["start", "activity", "i_did_this", "reobserve", "demonstration_result"]
+    event_kind: Literal["start", "activity", "i_did_this", "reobserve", "demonstration_result", "locate"]
     previous_step: GuidanceStep | None = None
 
 
@@ -173,6 +176,13 @@ class ProviderResult(Contract):
     verification: VerificationResult | None = None
     action_proposal: ActionProposal | None = None
     completed: bool = False
+
+
+class TargetLocation(Contract):
+    source_observation_id: UUID
+    target: Target | None
+    evidence: list[Evidence] = Field(min_length=1, max_length=5)
+    uncertainty: list[Annotated[str, Field(max_length=500)]] = Field(default_factory=list, max_length=5)
 
 
 class TurnResponse(ProviderResult):
@@ -209,6 +219,43 @@ class QuestionRequest(Contract):
 
 class QuestionResponse(Contract):
     answer: str = Field(min_length=1, max_length=3000)
+    provider: Literal["mock", "gemini"]
+
+
+class BrowserPlanRequest(Contract):
+    schema_version: Literal[1] = 1
+    goal: str = Field(min_length=1, max_length=1000)
+
+
+class BrowserIntent(Contract):
+    decision: Literal["open_browser", "clarify"]
+    browser: Literal["chrome", "edge", "firefox"]
+    address: str | None = Field(default=None, max_length=2048)
+    message: str = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def valid_destination(self):
+        if self.decision == "clarify":
+            if self.address is not None:
+                raise ValueError("clarification cannot open a website")
+            return self
+        if not self.address or re.search(r"[\s\\\x00-\x1f]", self.address):
+            raise ValueError("invalid browser destination")
+        url = urlsplit(self.address)
+        host = url.hostname or ""
+        if (url.scheme != "https" or url.username is not None or url.password is not None or url.port not in (None, 443)
+                or not re.fullmatch(r"(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}", host)
+                or host.lower().endswith((".localhost", ".local", ".internal", ".lan", ".home", ".invalid", ".test"))):
+            raise ValueError("destination must be a public HTTPS website")
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            return self
+        raise ValueError("IP addresses cannot be browser destinations")
+
+
+class BrowserPlanResponse(BrowserIntent):
+    schema_version: Literal[1] = 1
     provider: Literal["mock", "gemini"]
 
 

@@ -30,6 +30,8 @@ public sealed partial class App : Application
             registrations.AddSingleton(config); registrations.AddSingleton<PermissionSupervisor>();
             registrations.AddSingleton<WindowsCapture>();
             registrations.AddSingleton<IBrowserLauncher, WindowsBrowserLauncher>();
+            // User-selected screenshot-only operation: no UIA/DOM/browser control inspection.
+            registrations.AddSingleton<IBrowserTargetResolver, NoBrowserTargetResolver>();
             registrations.AddSingleton<IScreenCapture>(s => s.GetRequiredService<WindowsCapture>());
             registrations.AddSingleton<IWindowTracker>(s => s.GetRequiredService<WindowsCapture>());
             registrations.AddSingleton<IUserActivityObserver, WindowsActivity>();
@@ -38,7 +40,9 @@ public sealed partial class App : Application
             registrations.AddSingleton<IAudioCapture, WindowsAudioCapture>(); registrations.AddSingleton<ISpeechPlayback, WindowsSpeechPlayback>();
             registrations.AddSingleton<ILocalSessionStore, WindowsLocalStore>();
             registrations.AddSingleton<CognitoLogin>(); registrations.AddSingleton<ILoginSession>(s => s.GetRequiredService<CognitoLogin>());
-            registrations.AddSingleton<IAccountConnection, CloudConnection>(); registrations.AddSingleton<IGuidanceApiClient, GuidanceApiClient>();
+            registrations.AddSingleton<IAccountConnection, CloudConnection>(); registrations.AddSingleton<GuidanceApiClient>();
+            registrations.AddSingleton<IGuidanceApiClient>(s => s.GetRequiredService<GuidanceApiClient>());
+            registrations.AddSingleton<IBrowserPlanner>(s => s.GetRequiredService<GuidanceApiClient>());
             registrations.AddSingleton<LessonController>(); registrations.AddSingleton<MainViewModel>();
             var browserAuthCheck = Program.Arguments.Contains("--browser-auth-check");
             var renderPreview = Program.Arguments.Contains("--render-preview") || browserAuthCheck;
@@ -46,6 +50,7 @@ public sealed partial class App : Application
             {
                 var preview = new PreviewEnvironment();
                 registrations.AddSingleton<IBrowserLauncher, PreviewBrowserLauncher>();
+                registrations.AddSingleton<IBrowserTargetResolver, NoBrowserTargetResolver>();
                 registrations.AddSingleton<IScreenCapture>(preview); registrations.AddSingleton<IWindowTracker>(preview);
                 registrations.AddSingleton<IUserActivityObserver>(preview); registrations.AddSingleton<IInputExecutor>(preview);
                 registrations.AddSingleton<ILocalSessionStore>(preview); registrations.AddSingleton<IAudioCapture>(preview);
@@ -85,6 +90,11 @@ public sealed partial class App : Application
             var controller = services.GetRequiredService<LessonController>();
             var capture = services.GetRequiredService<WindowsCapture>();
             var activity = services.GetRequiredService<IUserActivityObserver>();
+            pointer.PrepareTargetAsync = async (bounds, token) =>
+            {
+                token.ThrowIfCancellationRequested();
+                await Dispatcher.UIThread.InvokeAsync(() => { if (!token.IsCancellationRequested) companion.AvoidTarget(bounds); });
+            };
             void FocusTask(CaptureSource source)
             {
                 companion.Collapse(); window.Hide();
@@ -131,7 +141,7 @@ public sealed partial class App : Application
                     }
                 });
             };
-            pointer.TargetHidden += () => Dispatcher.UIThread.Post(() => { overlay.Hide(); highlight.Hide(); });
+            pointer.TargetHidden += () => Dispatcher.UIThread.Post(() => { overlay.Hide(); highlight.Hide(); companion.ClearTarget(); });
             vm.PropertyChanged += (_, args) =>
             {
                 if (args.PropertyName == nameof(MainViewModel.IsSigningIn) && !vm.IsSigningIn && vm.SignedIn && !vm.IsBusy)

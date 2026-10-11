@@ -22,6 +22,8 @@ public static class WireJson
 }
 
 public interface IVersioned { int SchemaVersion { get; } }
+public sealed record BrowserPlanRequest(int SchemaVersion, string Goal) : IVersioned;
+public sealed record BrowserPlanResponse(int SchemaVersion, string Decision, string Browser, string? Address, string Message, string Provider) : IVersioned;
 public sealed record Bounds(double Left, double Top, double Right, double Bottom)
 {
     public void Validate()

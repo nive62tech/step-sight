@@ -29,6 +29,18 @@
         </Button>
         <Button Grid.Column="1" Content="■" Classes="danger" Command="{Binding StopCommand}" Width="36" MinHeight="34" Padding="4" VerticalAlignment="Center" ToolTip.Tip="Stop and end observation" AutomationProperties.Name="Stop and end observation" />
       </Grid>
+      <ScrollViewer x:Name="CompactBody" Grid.Row="1" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="20,0,20,16" Spacing="10">
+          <Border Height="1" Background="#DEE4D9" />
+          <TextBlock Text="{Binding CompactInstruction}" FontSize="18" FontFamily="Georgia" LineHeight="24" />
+          <TextBlock Text="{Binding MarkerStatus}" FontSize="12" Classes="accent" IsVisible="{Binding HasLesson}" />
+          <Border Classes="notice" Padding="10" IsVisible="{Binding HasNotice}"><TextBlock Text="{Binding Notice}" FontSize="12" /></Border>
+          <WrapPanel IsVisible="{Binding HasLesson}">
+            <Button x:Name="CompactFindButton" Content="Find click target" Classes="primary" IsEnabled="{Binding CanFindTarget}" Margin="0,0,8,8" Padding="12,8" />
+            <Button x:Name="CompactCheckButton" Content="Check screen" IsEnabled="{Binding CanInteract}" Margin="0,0,0,8" Padding="12,8" />
+          </WrapPanel>
+        </StackPanel>
+      </ScrollViewer>
       <ScrollViewer x:Name="ExpandedBody" Grid.Row="1" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Margin="20,4,20,18" Spacing="14">
           <Border Height="1" Background="#DEE4D9" />
@@ -38,15 +50,17 @@
             <TextBox x:Name="PromptBox" Text="{Binding Goal}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="100" MaxHeight="150" PlaceholderText="What would you like to do?" AutomationProperties.Name="What would you like help with?" />
             <Button Classes="primary" Content="Help with this window" Command="{Binding HelpCurrentWindowCommand}" IsVisible="{Binding HasPreparedWindow}" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
             <Button Content="{Binding ContinueLabel}" Command="{Binding ContinueSetupCommand}" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
-            <TextBlock Text="Starting shares live images of the named window—or the new browser—with Gemini via AWS. You click and type. Stop ends observation." Classes="muted" FontSize="11" LineHeight="16" />
+            <TextBlock Text="Starting sends your prompt to Gemini via AWS, then shares live screenshots of your task window for guidance. You click and type. Stop ends observation." Classes="muted" FontSize="11" LineHeight="16" />
           </StackPanel>
           <StackPanel IsVisible="{Binding HasLesson}" Spacing="12">
             <TextBlock Text="{Binding Status}" Classes="accent" FontSize="12" FontWeight="SemiBold" />
             <TextBlock Text="{Binding Instruction}" FontFamily="Georgia" FontSize="23" LineHeight="29" />
             <TextBlock Text="{Binding Explanation}" Classes="muted" FontSize="13" LineHeight="19" />
             <TextBlock Text="{Binding SourceSummary}" Classes="muted" FontSize="11" MaxLines="1" TextTrimming="CharacterEllipsis" />
+            <TextBlock Text="{Binding MarkerStatus}" Classes="accent" FontSize="12" />
             <WrapPanel Orientation="Horizontal">
-              <Button x:Name="ShowWhereButton" Content="Show me where" Classes="primary" IsEnabled="{Binding CanPoint}" Margin="0,0,8,8" />
+              <Button x:Name="FindTargetButton" Content="Find click target" Classes="primary" IsEnabled="{Binding CanFindTarget}" Margin="0,0,8,8" />
+              <Button x:Name="ShowWhereButton" Content="Show me where" IsEnabled="{Binding CanPoint}" Margin="0,0,8,8" />
               <Button x:Name="CheckButton" Content="Check screen" IsEnabled="{Binding CanInteract}" Margin="0,0,0,8" />
               <Button Content="Pause" Command="{Binding PauseCommand}" IsVisible="{Binding !IsPaused}" Margin="0,0,8,0" />
               <Button Content="New task" Command="{Binding NewLessonCommand}" />

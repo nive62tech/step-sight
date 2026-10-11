@@ -75,13 +75,13 @@
               </Border>
               <StackPanel Spacing="12">
                 <TextBlock Text="What would you like to do?" Classes="section" />
-                <TextBox Text="{Binding Goal}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="128" IsEnabled="{Binding !IsBusy}" PlaceholderText="Open Chrome and guide me through deploying my example on Railway…" AutomationProperties.Name="Learning goal" />
-                <TextBlock Text="Name Chrome, Edge or Firefox and your task. For another website, include its https:// address." Classes="muted" FontSize="12" />
+                <TextBox Text="{Binding Goal}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="128" IsEnabled="{Binding !IsBusy}" PlaceholderText="Describe what you want to do…" AutomationProperties.Name="Learning goal" />
+                <TextBlock Text="Describe your task in your own words. The agent will choose where to start. Name Chrome, Edge or Firefox if you have a preference." Classes="muted" FontSize="12" />
               </StackPanel>
               <Border Classes="surface" Padding="18"><StackPanel Spacing="10">
                 <TextBlock Text="A guide that sees what you see." Classes="section" />
                 <TextBlock Text="I'll open a new browser window, analyse its live images, then show an animated cursor and a comment for your next step. After you act, I'll look again." Classes="muted" FontSize="13" />
-                <TextBlock Text="By choosing Open browser &amp; guide me, you allow that new window to be shared with the AWS service and Gemini for live guidance. All tabs in that window are in scope. Stop ends observation." FontSize="12" />
+                <TextBlock Text="Starting sends your prompt to Gemini via AWS to choose a website, then shares live screenshots of the new window. All tabs in that window are in scope. You click and type. Stop ends observation." FontSize="12" />
                 <TextBlock Text="You click, type and deploy. Your physical cursor stays under your control." Classes="accent" FontSize="12" />
               </StackPanel></Border>
             </StackPanel>
@@ -94,7 +94,7 @@
                   </ComboBox>
                   <Button Content="Refresh open windows" Classes="quiet" Command="{Binding RefreshSourcesCommand}" />
                   <CheckBox Content="Allow a local preview of this selected source" IsChecked="{Binding ObservationConsent}" />
-                  <TextBlock Text="The preview stays on your computer. Starting a lesson shares this source with the guide. All visible tabs within a selected browser window are in scope." Classes="muted" FontSize="12" />
+                  <TextBlock Text="The preview stays on your computer. Starting shares screenshots of this source for live guidance. All visible tabs within a selected browser window are in scope." Classes="muted" FontSize="12" />
                 </StackPanel>
               </Border>
               <Expander Header="Hide private areas (optional)">

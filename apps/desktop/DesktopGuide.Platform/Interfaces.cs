@@ -38,6 +38,7 @@ public interface IUserActivityObserver : IDisposable
 }
 public interface IPointerGuide
 {
+    event Action? VisibilityLost { add { } remove { } }
     void SetHint(string instruction, string expectedAction) { }
     Task PointAsync(ScreenFrame frame, Target target, CaptureSource source, CancellationToken cancellation);
     Task ShowVisualAsync(ScreenFrame frame, Target target, CaptureSource source, CancellationToken cancellation) => Task.CompletedTask;

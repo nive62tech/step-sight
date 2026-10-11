@@ -30,18 +30,19 @@ public sealed class GuidanceMarker : Canvas
     public GuidanceMarker()
     {
         Width = 340; Height = 140; IsHitTestVisible = false;
-        ripple = new Border { Width = 54, Height = 54, CornerRadius = new(27), BorderThickness = new(2), BorderBrush = Brush.Parse("#4B9F7A"), RenderTransformOrigin = RelativePoint.Center };
-        ring = new Border { Width = 34, Height = 34, CornerRadius = new(17), BorderThickness = new(2), BorderBrush = Brush.Parse("#214C40"), Background = Brush.Parse("#306DB794") };
+        ripple = new Border { Width = 48, Height = 48, CornerRadius = new(24), BorderThickness = new(2), BorderBrush = Brush.Parse("#3984FF"), RenderTransformOrigin = RelativePoint.Center };
+        ring = new Border { Width = 38, Height = 38, CornerRadius = new(19), BorderThickness = new(2.5), BorderBrush = Brush.Parse("#3984FF"), Background = Brush.Parse("#293984FF"),
+            BoxShadow = BoxShadows.Parse("0 0 0 1 #E6FFFFFF"), RenderTransformOrigin = RelativePoint.Center };
         cursor = new Avalonia.Controls.Shapes.Path {
-            Data = Geometry.Parse("M 0,0 L 1,27 L 8,21 L 14,35 L 20,32 L 14,19 L 26,19 Z"),
-            Fill = Brush.Parse("#214C40"), Stroke = Brushes.White, StrokeThickness = 2, Width = 30, Height = 38
+            Data = Geometry.Parse("M 0,0 L 1,30 L 9,23 L 16,39 L 23,35 L 16,22 L 30,21 Z"),
+            Fill = Brush.Parse("#151A23"), Stroke = Brushes.White, StrokeThickness = 2.5, Width = 34, Height = 43
         };
-        action = new TextBlock { FontFamily = "Bahnschrift", FontWeight = FontWeight.SemiBold, FontSize = 16, Foreground = Brush.Parse("#193B34") };
-        comment = new TextBlock { FontFamily = "Bahnschrift", FontSize = 12, Foreground = Brush.Parse("#546660"), TextWrapping = TextWrapping.Wrap, MaxLines = 3 };
+        action = new TextBlock { FontFamily = "Bahnschrift", FontWeight = FontWeight.SemiBold, FontSize = 16, Foreground = Brushes.White };
+        comment = new TextBlock { FontFamily = "Bahnschrift", FontSize = 13, Foreground = Brush.Parse("#DFE6F2"), TextWrapping = TextWrapping.Wrap, MaxLines = 3 };
         bubble = new Border {
             Width = 246, MinHeight = 80, CornerRadius = new(12), Padding = new(15,12),
-            Background = Brushes.White, BorderBrush = Brush.Parse("#A9C3AF"), BorderThickness = new(1),
-            BoxShadow = BoxShadows.Parse("0 4 18 0 #240B2B1D"),
+            Background = Brush.Parse("#18202D"), BorderBrush = Brush.Parse("#6A9FFF"), BorderThickness = new(1),
+            BoxShadow = BoxShadows.Parse("0 4 14 0 #380A1322"),
             Child = new StackPanel { Spacing = 6, Children = { action, comment } }
         };
         Children.Add(ripple); Children.Add(ring); Children.Add(cursor); Children.Add(bubble);
@@ -53,8 +54,8 @@ public sealed class GuidanceMarker : Canvas
         bubble.IsVisible = showCallout;
         action.Text = expectedAction switch { "click" => "Click here", "type" => "Type here", "scroll" => "Scroll here", "key_chord" => "Use your keyboard", _ => "Look here" };
         comment.Text = instruction.Length > 180 ? instruction[..177] + "…" : instruction;
-        SetLeft(ripple, x - 27); SetTop(ripple, y - 27);
-        SetLeft(ring, x - 17); SetTop(ring, y - 17);
+        SetLeft(ripple, x - 24); SetTop(ripple, y - 24);
+        SetLeft(ring, x - 19); SetTop(ring, y - 19);
         SetLeft(bubble, Math.Clamp(x < 170 ? x + 45 : x - 285, 2, 92));
         SetTop(bubble, Math.Clamp(y - 24, 2, 54));
         Animate(0, true);
@@ -62,10 +63,12 @@ public sealed class GuidanceMarker : Canvas
     public void Animate(double seconds, bool reducedMotion)
     {
         var phase = reducedMotion ? 0 : (seconds % 1.6) / 1.6;
-        var scale = reducedMotion ? 1 : 1 + .4 * phase;
-        ripple.RenderTransform = new ScaleTransform(scale, scale); ripple.Opacity = reducedMotion ? .35 : .65 * (1 - phase);
-        var bounce = reducedMotion ? 0 : 3 * (1 - Math.Cos(seconds * 4)) / 2;
-        SetLeft(cursor, anchorX + bounce); SetTop(cursor, anchorY + bounce);
+        var scale = reducedMotion ? 1 : .8 + .35 * phase;
+        ripple.RenderTransform = new ScaleTransform(scale, scale); ripple.Opacity = reducedMotion ? .5 : .85 * (1 - phase);
+        var press = reducedMotion ? 1 : 1 - .1 * Math.Pow(Math.Max(0, 1 - phase * 5), 2);
+        ring.RenderTransform = new ScaleTransform(press, press);
+        // Animate the click ring, never move the tip away from the grounded point.
+        SetLeft(cursor, anchorX); SetTop(cursor, anchorY);
     }
 }
 

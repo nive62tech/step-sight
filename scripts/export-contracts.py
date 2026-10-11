@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "services/api"))
 from app import contracts  # noqa: E402
 
-NAMES = ["SessionCreate", "SessionView", "TurnRequest", "TurnResponse", "LearnerEvent", "ActionProposal", "QuestionRequest", "QuestionResponse", "SessionIntent"]
+NAMES = ["SessionCreate", "SessionView", "TurnRequest", "TurnResponse", "LearnerEvent", "ActionProposal", "QuestionRequest", "QuestionResponse", "SessionIntent", "BrowserPlanRequest", "BrowserPlanResponse"]
 
 if __name__ == "__main__":
     for name in NAMES:

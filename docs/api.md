@@ -7,6 +7,7 @@ The generated JSON schemas are in `packages/contracts`; synthetic fixtures round
 | GET `/health/live` | Process liveness; no model request |
 | GET `/health/ready` | Database connectivity plus configured provider/auth labels |
 | GET `/v1/lessons` | Bundled versioned lessons and qualification labels |
+| POST `/v1/browser/plan` | Bounded goal text → model-selected browser/HTTPS starting site or clarification; usage-accounted, no session/capture/input grant, no persisted goal |
 | POST `/v1/sessions` | Create owner/device/scope-bound lesson; save-progress opt-in |
 | GET `/v1/sessions/{id}` | Current owner-scoped version and ephemeral pending step |
 | POST `/v1/sessions/{id}/turns` | Multipart `metadata` JSON and `screenshot` PNG/JPEG; guidance/verification |

@@ -85,6 +85,13 @@ public sealed class WindowsCapture : IScreenCapture, IWindowTracker
         if (pid != entry.ProcessId || source.TargetId != TargetId(entry.Handle)) return false;
         return Native.SetForegroundWindow(entry.Handle);
     }
+    internal nint InspectionWindow(CaptureSource source, Geometry geometry)
+    {
+        if (!sources.TryGetValue(source.ScopeId, out var entry) || entry.Monitor
+            || source.ScopeId != geometry.ScopeId || source.TargetId != geometry.LocalTargetId
+            || !IsCurrentGeometry(source, geometry)) return 0;
+        return entry.Handle;
+    }
     // Isolated harness only: ordinary source enumeration excludes the assistant's process.
     public CaptureSource RegisterOwnTestWindow(nint handle, string expectedTitle)
     {

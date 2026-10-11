@@ -92,7 +92,7 @@ def check(config_path: Path, output: Path, synthetic_turn: bool, budget_path: Pa
             cognito.admin_set_user_password(UserPoolId=pool, Username=created[-1], Password=password, Permanent=True)
             tokens.append(login(config, username, password))
         report["tests"]["hosted_ui_pkce"] = "passed"
-        with httpx.Client(base_url=config["ApiOrigin"], timeout=20) as api:
+        with httpx.Client(base_url=config["ApiOrigin"], timeout=65) as api:
             headers = {"Authorization": "Bearer " + tokens[0]["access_token"]}
             other = {"Authorization": "Bearer " + tokens[1]["access_token"]}
             assert api.get("/v1/lessons", headers=headers).status_code == 200
@@ -109,7 +109,10 @@ def check(config_path: Path, output: Path, synthetic_turn: bool, budget_path: Pa
             report["tests"]["real_owner_isolation"] = "passed"
             if synthetic_turn:
                 budget = LiveBudget(budget_path, "gen-lang-client-0644821693")
-                budget.reserve("deployed API synthetic turn; usage reconciled in API ledger")
+                # One schema repair plus two transient retries can produce four attempts.
+                # Retain all reservations unless actual usage is reconciled from the API ledger.
+                for attempt in range(4):
+                    budget.reserve(f"deployed API synthetic turn maximum attempt {attempt + 1}")
                 image = Image.new("RGB", (800, 450), "white")
                 draw = ImageDraw.Draw(image)
                 draw.rectangle((520, 330, 750, 410), fill="#286654")
@@ -134,6 +137,10 @@ def check(config_path: Path, output: Path, synthetic_turn: bool, budget_path: Pa
                     target = body["step"].get("target")
                     if target:
                         assert target["geometry_id"] == geometry_id
+                recovered = api.get(f"/v1/sessions/{sid}/turns/{metadata['request_id']}", headers=headers)
+                assert recovered.status_code == 200 and recovered.json() == body
+                assert api.get(f"/v1/sessions/{sid}/turns/{metadata['request_id']}", headers=other).status_code == 404
+                report["tests"]["same_turn_recovery_and_owner_isolation"] = "passed"
                 report["tests"]["deployed_image_turn_and_current_evidence_validation"] = "passed"
                 report["turn_round_trip_ms"] = round((time.monotonic() - started) * 1000)
                 report["turn_timings_ms"] = body.get("timings_ms", {})

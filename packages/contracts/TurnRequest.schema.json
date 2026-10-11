@@ -298,7 +298,8 @@
         "activity",
         "i_did_this",
         "reobserve",
-        "demonstration_result"
+        "demonstration_result",
+        "locate"
       ],
       "title": "Event Kind",
       "type": "string"

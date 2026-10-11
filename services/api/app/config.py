@@ -16,7 +16,10 @@ class Settings(BaseSettings):
     gemini_guidance_model: str = "gemini-3.1-flash-lite"
     gemini_verification_model: str = "gemini-3.1-flash-lite"
     gemini_transcription_model: str = "gemini-3.1-flash-lite"
+    gemini_thinking_level: Literal["AUTO", "MINIMAL", "LOW", "MEDIUM", "HIGH"] = "AUTO"
     gemini_computer_use_enabled: bool = False
+    gemini_computer_locator_enabled: bool = False
+    gemini_locator_model: Literal["gemini-3.5-flash-lite"] = "gemini-3.5-flash-lite"
     cognito_issuer: str = ""
     cognito_client_id: str = ""
     cognito_scopes: str = "desktop-guide/lessons"

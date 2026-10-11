@@ -303,6 +303,8 @@ resource "aws_cloudfront_distribution" "api" {
     origin_id   = "api"
     vpc_origin_config {
       vpc_origin_id = aws_cloudfront_vpc_origin.api.id
+      # Provider deadline is 35s including retries; never cut off a completed turn at 30s.
+      origin_read_timeout = 60
     }
 
 

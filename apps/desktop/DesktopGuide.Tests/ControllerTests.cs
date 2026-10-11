@@ -7,7 +7,7 @@ namespace DesktopGuide.Tests;
 public sealed class ControllerTests
 {
     private sealed class Environment : IScreenCapture, IWindowTracker, IUserActivityObserver, IPointerGuide, IInputExecutor,
-        IGuidanceApiClient, ILocalSessionStore, IAudioCapture, ISpeechPlayback
+        IGuidanceApiClient, ILocalSessionStore, IAudioCapture, ISpeechPlayback, IBrowserTargetResolver
     {
         public CaptureSource Source = new(Guid.NewGuid(), Guid.NewGuid(), "Desktop Guide Training Sandbox", "window");
         public ScreenFrame Frame;
@@ -16,12 +16,30 @@ public sealed class ControllerTests
         public GuidanceStep? Pending;
         public string Verify = "CONFIRMED";
         public bool BlockTurn;
+        public bool ServiceTimeout;
+        public bool WaitingForPage;
+        public bool MissingTarget, LocateMissingTarget, ChangeLocatedInstruction;
+        public int LocateCalls;
+        public int BrowserLookups;
+        public bool BlockBrowser, RejectBrowser;
+        public Target? ShownTarget;
+        public TaskCompletionSource BrowserEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ContinueBrowser = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task<BrowserTargetResolution> ResolveAsync(CaptureSource source, ScreenFrame frame, GuidanceStep step, CancellationToken cancellation)
+        {
+            BrowserLookups++; BrowserEntered.TrySetResult();
+            if (BlockBrowser) await ContinueBrowser.Task; // Deliberately ignore cancellation.
+            return RejectBrowser ? BrowserTargetResolution.Reject("Several matching browser controls")
+                : new(BrowserTargetStatus.Matched, step.Target! with { Bounds = new(.7, .1, .8, .2) }, "Browser control checked");
+        }
+        public event Action? VisibilityLost;
+        public void LoseMarker() => VisibilityLost?.Invoke();
         public TaskCompletionSource<bool> TurnEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<bool> ContinueTurn = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int PointerMoves, Dispatches, Turns, VisualMarkers, CaptureStops;
         public void StopCapture() => CaptureStops++;
         public Task ShowVisualAsync(ScreenFrame frame, Target target, CaptureSource source, CancellationToken cancellation)
-        { cancellation.ThrowIfCancellationRequested(); Permissions.RequireObservation(source.ScopeId); VisualMarkers++; return Task.CompletedTask; }
+        { cancellation.ThrowIfCancellationRequested(); Permissions.RequireObservation(source.ScopeId); ShownTarget = target; VisualMarkers++; return Task.CompletedTask; }
         public bool Foreground = true;
         public Environment()
         {
@@ -67,9 +85,22 @@ public sealed class ControllerTests
         public async Task<TurnResponse> TurnAsync(Guid session, TurnRequest request, ScreenFrame frame, CancellationToken cancellation)
         {
             Turns++; TurnEntered.TrySetResult(true);
+            if (ServiceTimeout) throw new TaskCanceledException("Synthetic HTTP deadline");
             if (BlockTurn) await ContinueTurn.Task; // Deliberately ignore cancellation to exercise late-response defense.
+            if (request.EventKind == "locate")
+            {
+                LocateCalls++;
+                var located = request.PreviousStep! with { SourceObservationId = frame.Observation.Id,
+                    Evidence = [new(frame.Observation.Id, "Settings visible in this fresh fixture")],
+                    Instruction = ChangeLocatedInstruction ? "A different task" : request.PreviousStep!.Instruction,
+                    Target = LocateMissingTarget ? null : new("rectangle", "normalized_source_image", frame.Geometry.Id, new(.5, .5, .6, .6), "Settings") };
+                Pending = located; Session = Session with { SessionVersion = Session.SessionVersion + 1, PendingStep = located };
+                return new(1, session, Session.SessionVersion, Guid.NewGuid(), frame.Observation.Id, "gemini", located, null, null, false);
+            }
             var step = new GuidanceStep(Guid.NewGuid(), frame.Observation.Id, "Open Settings", "Change practice preferences",
                 new("rectangle", "normalized_source_image", frame.Geometry.Id, new(.5, .5, .6, .6), "Settings"), "click", [new("visible_text", "Settings")], [], [new(frame.Observation.Id, "Settings visible")], []);
+            if (MissingTarget) step = step with { Target = null };
+            if (WaitingForPage) step = step with { Target = null, ExpectedUserAction = "wait", Instruction = "Wait for the dashboard to load" };
             Pending = step; Session = Session with { SessionVersion = Session.SessionVersion + 1, PendingStep = step };
             var proposal = new ActionProposal(Guid.NewGuid(), frame.Observation.Id, frame.Geometry.Id, new("click", .55, .55, "left"), "Open practice Settings", "low", false);
             return new(1, session, Session.SessionVersion, Guid.NewGuid(), frame.Observation.Id, "gemini", step,
@@ -93,7 +124,124 @@ public sealed class ControllerTests
         public void Play(byte[] wav) { }
         public void Stop() { }
         public void Dispose() { }
-        public LessonController Controller() => new(this, this, this, this, this, this, this, this, this, Permissions);
+        public LessonController Controller(bool browser = false) => new(this, this, this, this, this, this, this, this, this, Permissions, browser ? this : null);
+    }
+    [Fact]
+    public async Task BrowserGroundingCorrectsOnlyTheMarkerWithoutChangingServerStepOrInputProposal()
+    {
+        var env = new Environment(); using var controller = env.Controller(browser: true);
+        ActionProposal? proposal = null; controller.ProposalChanged += value => proposal = value;
+        await controller.PreviewAsync(env.Source);
+        await controller.StartAsync(env.Source, "Use live browser", "browser", InteractionMode.Guide, false, false, false);
+        Assert.Equal(new Bounds(.7, .1, .8, .2), env.ShownTarget!.Bounds);
+        Assert.Equal(new Bounds(.5, .5, .6, .6), env.Pending!.Target!.Bounds);
+        Assert.Equal(.55, proposal!.Action.X);
+        Assert.Equal(1, env.BrowserLookups); Assert.Equal(1, env.Turns);
+        Assert.Equal(0, env.Dispatches); Assert.Equal(0, env.PointerMoves);
+    }
+    [Fact]
+    public async Task AmbiguousBrowserControlGetsOneBoundedFreshLocatorAndNeverGuesses()
+    {
+        var env = new Environment { RejectBrowser = true }; using var controller = env.Controller(browser: true);
+        await controller.PreviewAsync(env.Source);
+        await controller.StartAsync(env.Source, "Use live browser", "browser", InteractionMode.Guide, false, false, false);
+        Assert.Equal(GuideMarkerState.BrowserTargetUnconfirmed, controller.MarkerState);
+        Assert.Equal(0, env.VisualMarkers); Assert.Equal(2, env.Turns); Assert.Equal(1, env.LocateCalls);
+    }
+    [Fact]
+    public async Task SandboxNeverReceivesBrowserElementInspection()
+    {
+        var env = new Environment(); using var controller = env.Controller(browser: true);
+        await controller.PreviewAsync(env.Source);
+        await controller.StartAsync(env.Source, "Practice", "sandbox", InteractionMode.Guide, false, false, false);
+        Assert.Equal(0, env.BrowserLookups); Assert.Equal(1, env.VisualMarkers);
+    }
+    [Fact]
+    public async Task StopRejectsBrowserResultsThatIgnoreCancellation()
+    {
+        var env = new Environment { BlockBrowser = true }; using var controller = env.Controller(browser: true);
+        await controller.PreviewAsync(env.Source);
+        var start = controller.StartAsync(env.Source, "Use browser", "browser", InteractionMode.Guide, false, false, false);
+        await env.BrowserEntered.Task; env.RaiseStop(); env.ContinueBrowser.TrySetResult(); await start;
+        Assert.Equal(LessonState.Stopped, controller.State); Assert.Equal(0, env.VisualMarkers); Assert.Equal(0, env.Dispatches);
+    }
+    [Fact]
+    public async Task LoadingPageWaitsForNewImageRatherThanSearchingForANonexistentClick()
+    {
+        var env = new Environment { WaitingForPage = true }; using var controller = env.Controller();
+        await controller.PreviewAsync(env.Source);
+        await controller.StartAsync(env.Source, "Use live screen", "browser", InteractionMode.Guide, false, false, false);
+        Assert.Equal(LessonState.WaitingForApplication, controller.State);
+        Assert.Equal(GuideMarkerState.WaitingForPage, controller.MarkerState);
+        Assert.False(controller.CanLocateCurrentTarget); Assert.Equal(1, env.Turns); Assert.Equal(0, env.LocateCalls);
+        await controller.ObserveTurnAsync("locate"); Assert.Equal(1, env.Turns);
+        env.Verify = "NOT_YET"; await controller.ObserveTurnAsync("activity");
+        Assert.Equal(LessonState.WaitingForApplication, controller.State); Assert.Equal(0, env.VisualMarkers);
+        env.WaitingForPage = false; env.Verify = "CONFIRMED"; await controller.ObserveTurnAsync("activity");
+        Assert.Equal(LessonState.WaitingForLearner, controller.State); Assert.Equal(GuideMarkerState.Visible, controller.MarkerState);
+        Assert.Equal(1, env.VisualMarkers); Assert.Equal(0, env.PointerMoves);
+    }
+    [Fact]
+    public async Task ServiceTimeoutShowsRecoverableErrorInsteadOfStayingInPlanning()
+    {
+        var env = new Environment { ServiceTimeout = true }; using var controller = env.Controller();
+        string notice = ""; controller.Notice += value => notice = value;
+        await controller.PreviewAsync(env.Source);
+        await controller.StartAsync(env.Source, "Use live screen", "browser", InteractionMode.Guide, false, false, false);
+        Assert.Equal(LessonState.Recovering, controller.State); Assert.Contains("timed out", notice);
+        Assert.Equal(GuideMarkerState.Off, controller.MarkerState); Assert.Equal(0, env.VisualMarkers);
+        env.ServiceTimeout = false; await controller.ObserveTurnAsync("reobserve");
+        Assert.Equal(LessonState.WaitingForLearner, controller.State); Assert.Equal(1, env.VisualMarkers);
+    }
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public async Task MissingMarkerGetsOneBoundedTargetSearchWithoutAdvancing(bool stillMissing)
+    {
+        var env = new Environment { MissingTarget = true, LocateMissingTarget = stillMissing };
+        using var controller = env.Controller(); var instructions = new List<string>();
+        controller.Presentation += (text, _, _) => instructions.Add(text);
+        await controller.PreviewAsync(env.Source);
+        await controller.StartAsync(env.Source, "Use live screen", "browser", InteractionMode.Guide, false, false, false);
+        Assert.Equal(2, env.Turns); Assert.Equal(1, env.LocateCalls);
+        Assert.Equal(0, env.Session.CompletedSteps); Assert.Equal(0, env.PointerMoves); Assert.Equal(0, env.Dispatches);
+        Assert.All(instructions, text => Assert.Equal("Open Settings", text));
+        Assert.Equal(stillMissing ? GuideMarkerState.MissingTarget : GuideMarkerState.Visible, controller.MarkerState);
+        Assert.Equal(stillMissing ? 0 : 1, env.VisualMarkers);
+    }
+    [Fact]
+    public async Task TargetSearchCannotReplaceTheCurrentInstruction()
+    {
+        var env = new Environment(); using var controller = env.Controller();
+        await controller.PreviewAsync(env.Source);
+        await controller.StartAsync(env.Source, "Use live screen", "browser", InteractionMode.Guide, false, false, false);
+        env.ChangeLocatedInstruction = true; await controller.ObserveTurnAsync("locate");
+        Assert.Equal(LessonState.Recovering, controller.State); Assert.Equal(1, env.VisualMarkers);
+        Assert.Equal(GuideMarkerState.ScreenChanged, controller.MarkerState);
+    }
+    [Fact]
+    public async Task VisualMarkerReturnsAfterFocusWithoutAnotherModelCallOrPhysicalMovement()
+    {
+        var env = new Environment(); using var controller = env.Controller();
+        await controller.PreviewAsync(env.Source);
+        await controller.StartAsync(env.Source, "Use live screen", "browser", InteractionMode.Guide, false, false, false);
+        var restored = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        controller.MarkerStateChanged += state => { if (state == GuideMarkerState.Visible) restored.TrySetResult(); };
+        env.Foreground = false; env.LoseMarker(); Assert.Equal(GuideMarkerState.FocusRequired, controller.MarkerState);
+        env.Foreground = true; await restored.Task.WaitAsync(TimeSpan.FromSeconds(4));
+        Assert.Equal(2, env.VisualMarkers); Assert.Equal(1, env.Turns); Assert.Equal(0, env.PointerMoves);
+        controller.StopLocal(); Assert.Equal(GuideMarkerState.Off, controller.MarkerState);
+    }
+    [Fact]
+    public async Task StopRejectsALateTargetSearch()
+    {
+        var env = new Environment(); using var controller = env.Controller();
+        await controller.PreviewAsync(env.Source);
+        await controller.StartAsync(env.Source, "Use live screen", "browser", InteractionMode.Guide, false, false, false);
+        env.BlockTurn = true; env.TurnEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finding = controller.ObserveTurnAsync("locate"); await env.TurnEntered.Task;
+        controller.StopLocal(); env.ContinueTurn.SetResult(true); await finding;
+        Assert.Equal(LessonState.Stopped, controller.State); Assert.Equal(GuideMarkerState.Off, controller.MarkerState);
+        Assert.Equal(1, env.VisualMarkers); Assert.Equal(0, env.Dispatches);
     }
     [Fact]
     public async Task VisualGuideDoesNotNeedOrGrantPhysicalInputAndStopReleasesCapture()
@@ -142,7 +290,7 @@ public sealed class ControllerTests
         await controller.ObserveTurnAsync("i_did_this"); Assert.Equal(2, env.Turns); Assert.Equal(0, env.Dispatches);
     }
     [Theory]
-    [InlineData("UNCERTAIN")] [InlineData("DIFFERENT_STATE")] [InlineData("NOT_YET")]
+    [InlineData("UNCERTAIN")] [InlineData("DIFFERENT_STATE")]
     public async Task WrongTurnsDoNotAdvanceOrPointAtOldTargets(string status)
     {
         var env = new Environment(); using var controller = env.Controller();
@@ -153,6 +301,23 @@ public sealed class ControllerTests
         await controller.ShowWhereAsync(); Assert.Equal(1, env.PointerMoves);
         for (int i = 0; i < 3; i++) await controller.ObserveTurnAsync("activity");
         Assert.Equal(LessonState.Recovering, controller.State);
+    }
+    [Fact]
+    public async Task NotYetRefreshesTheSameInstructionInsteadOfLeavingTheCursorMissing()
+    {
+        var env = new Environment(); using var controller = env.Controller();
+        await controller.PreviewAsync(env.Source);
+        await controller.StartAsync(env.Source, "Open settings", "browser", InteractionMode.Guide, false, false, false);
+        var originalStep = env.Pending!;
+        env.Frame = env.Frame with { Observation = env.Frame.Observation with { Id = Guid.NewGuid() }, PixelDigest = "fresh screenshot" };
+        env.Verify = "NOT_YET";
+        await controller.ObserveTurnAsync("activity");
+        Assert.Equal(LessonState.WaitingForLearner, controller.State);
+        Assert.Equal(GuideMarkerState.Visible, controller.MarkerState);
+        Assert.Equal(originalStep.Id, env.Pending!.Id); Assert.Equal(originalStep.Instruction, env.Pending.Instruction);
+        Assert.Equal(env.Frame.Observation.Id, env.Pending.SourceObservationId);
+        Assert.Equal(2, env.VisualMarkers); Assert.Equal(1, env.LocateCalls); Assert.Equal(3, env.Turns);
+        Assert.Equal(0, env.Session.CompletedSteps); Assert.Equal(0, env.Dispatches);
     }
     [Fact]
     public async Task LateModelResponseCannotRestoreStoppedState()

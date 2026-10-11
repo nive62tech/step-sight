@@ -24,6 +24,7 @@ public sealed partial class MainViewModel : ObservableObject
     private CancellationTokenSource? signInCancellation;
     private CancellationTokenSource? taskCancellation;
     private readonly IBrowserLauncher? browserLauncher;
+    private readonly IBrowserPlanner? browserPlanner;
     private bool ignoreStartReset;
     public event Action<CaptureSource>? GuideStarting;
     public string BrandName { get; }
@@ -40,12 +41,12 @@ public sealed partial class MainViewModel : ObservableObject
     public string[] Modes { get; } = ["Guide me", "Show me this action", "Let me try"];
     public string[] DetailLevels { get; } = ["brief", "standard", "detailed"];
     [ObservableProperty] private LessonChoice? selectedLessonChoice;
-    [ObservableProperty] private string selectedLesson = "railway";
+    [ObservableProperty] private string selectedLesson = "browser";
     [ObservableProperty] private string selectedDetail = "standard";
     [ObservableProperty] private string responseTiming = "";
     [ObservableProperty] private CaptureSource? selectedSource;
     [ObservableProperty] private int selectedMode;
-    [ObservableProperty] private string goal = "Open Chrome and guide me through deploying my example on Railway. I will click and deploy.";
+    [ObservableProperty] private string goal = "";
     [ObservableProperty] private bool observationConsent;
     [ObservableProperty] private bool previewAccepted;
     [ObservableProperty] private bool hasPreview;
@@ -78,6 +79,23 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool resumeConsent;
     [ObservableProperty] private LessonState lessonState = LessonState.Idle;
     [ObservableProperty] private CaptureSource? preparedWindow;
+    [ObservableProperty] private GuideMarkerState guideMarkerState;
+    public string MarkerStatus => GuideMarkerState switch
+    {
+        GuideMarkerState.Visible => "Guide cursor is on your task window",
+        GuideMarkerState.Locating => "Finding a target in the live image…",
+        GuideMarkerState.MissingTarget => "No visible click target found",
+        GuideMarkerState.BrowserTargetUnconfirmed => "Browser control needs another check",
+        GuideMarkerState.ScreenChanged => "Target needs a fresh image",
+        GuideMarkerState.FocusRequired => "Return to your task window to see the cursor",
+        GuideMarkerState.WaitingForPage => "Watching for the page to finish loading",
+        _ => "Guide cursor is off"
+    };
+    public bool CanFindTarget => CanInteract && controller.CanLocateCurrentTarget && SelectedMode != 2;
+    public bool HasCompactCard => HasLesson || HasNotice || IsBusy;
+    public string CompactInstruction => LessonState is LessonState.Observing or LessonState.Planning or LessonState.Verifying
+        ? "Reading the live screen. Your next instruction will appear here."
+        : HasLesson ? Instruction : IsBusy ? "Preparing your guide…" : "Your guide needs attention";
     public bool HasPreparedWindow => PreparedWindow is not null;
     public string PreparedWindowLabel => PreparedWindow?.Label ?? "Use Ctrl + Alt + Space from the app you want help with.";
     public string CompanionHotkeyStatus => activity is ICompanionHotkey { CompanionHotkeyRegistered: true }
@@ -122,10 +140,11 @@ public sealed partial class MainViewModel : ObservableObject
     public string RecordLabel => Recording ? "Finish recording" : "Speak a question";
 
     public MainViewModel(LessonController controller, ILoginSession login, PublicConfiguration config, WindowsPointer pointer,
-        IUserActivityObserver activity, IAccountConnection connection, Action<Action>? dispatch = null, IBrowserLauncher? browserLauncher = null)
+        IUserActivityObserver activity, IAccountConnection connection, Action<Action>? dispatch = null, IBrowserLauncher? browserLauncher = null, IBrowserPlanner? browserPlanner = null)
     {
         (this.controller, this.login, this.pointer, this.activity, this.connection) = (controller, login, pointer, activity, connection);
         this.browserLauncher = browserLauncher;
+        this.browserPlanner = browserPlanner;
         ui = dispatch ?? (action => { if (Dispatcher.UIThread.CheckAccess()) action(); else Dispatcher.UIThread.Post(action); });
         BrandName = config.BrandName; BuildLabel = config.BuildLabel;
         EnvironmentLabel = config.AuthMode == "mock" ? "LOCAL / MOCK · no live screen understanding" : "Cloud pilot";
@@ -135,6 +154,7 @@ public sealed partial class MainViewModel : ObservableObject
         activity.SessionUnavailable += () => ui(() => { taskCancellation?.Cancel(); });
         controller.Presentation += (text, detail, state) => ui(() => { Instruction = text; Explanation = detail; Status = state; });
         controller.Notice += message => ui(() => Notice = message);
+        controller.MarkerStateChanged += value => ui(() => GuideMarkerState = value);
         controller.Preview += frame => ui(() =>
         {
             if (!ObservationConsent || SelectedSource?.ScopeId != frame.Observation.ScopeId) return;
@@ -159,12 +179,13 @@ public sealed partial class MainViewModel : ObservableObject
         foreach (var name in new[] { nameof(SignedIn), nameof(NeedsSignIn), nameof(AccountTitle), nameof(AccountDetail), nameof(AccountShort), nameof(ContinueLabel), nameof(CanSignIn),
             nameof(ShowSetup), nameof(ShowLesson), nameof(ShowSettings), nameof(ShowTask), nameof(ShowWindow), nameof(ShowReview), nameof(PageTitle), nameof(PageDescription), nameof(SetupProgress),
             nameof(CanPreview), nameof(CanStart), nameof(StartHint), nameof(HasNotice), nameof(SourceSummary), nameof(LessonTitle), nameof(ModeHelp), nameof(HasLesson),
-            nameof(IsPaused), nameof(CanInteract), nameof(CanPoint), nameof(ObservationSummary), nameof(IsRailwayLesson), nameof(ShowDemoPermission), nameof(ShowPointerPermission), nameof(HasProposal), nameof(HotkeyStatus), nameof(CompanionStatus) }) OnPropertyChanged(name);
+            nameof(IsPaused), nameof(CanInteract), nameof(CanPoint), nameof(ObservationSummary), nameof(IsRailwayLesson), nameof(ShowDemoPermission), nameof(ShowPointerPermission), nameof(HasProposal), nameof(HotkeyStatus), nameof(CompanionStatus), nameof(CanFindTarget), nameof(HasCompactCard), nameof(CompactInstruction) }) OnPropertyChanged(name);
     }
     private static string StatusText(LessonState state) => state switch
     {
         LessonState.Observing => "Looking at your window…", LessonState.Planning => "Preparing your next step…", LessonState.Verifying => "Checking what changed…",
         LessonState.WaitingForLearner => "Your turn", LessonState.PrivacyPaused => "Paused for privacy", LessonState.Paused => "Lesson paused",
+        LessonState.WaitingForApplication => "Waiting for the page", LessonState.Recovering => "Guidance needs attention",
         LessonState.Stopped => "Stopped · permissions cleared", LessonState.NetworkInterrupted => "Connection interrupted", LessonState.Completed => "Lesson complete", _ => "Getting ready…"
     };
     partial void OnActiveViewChanged(string value) => RefreshUi();
@@ -174,6 +195,8 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnIsServiceReadyChanged(bool value) => RefreshUi();
     partial void OnNoticeChanged(string value) => RefreshUi();
     partial void OnStatusChanged(string value) => OnPropertyChanged(nameof(CompanionStatus));
+    partial void OnGuideMarkerStateChanged(GuideMarkerState value) { OnPropertyChanged(nameof(MarkerStatus)); OnPropertyChanged(nameof(CanFindTarget)); }
+    partial void OnInstructionChanged(string value) => OnPropertyChanged(nameof(CompactInstruction));
     partial void OnLessonStateChanged(LessonState value) => RefreshUi();
     partial void OnCurrentProposalChanged(ActionProposal? value) => RefreshUi();
     partial void OnGoalChanged(string value) => RefreshUi();
@@ -240,9 +263,11 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand] private Task ContinueSetup() => Run(async () =>
     {
         var prompt = Goal;
-        var plan = BrowserLaunch.FromPrompt(prompt);
+        if (string.IsNullOrWhiteSpace(prompt)) throw new SafetyException("Describe what you want to do first.");
+        if (prompt.Length > 1000) throw new SafetyException("Keep your task description under 1,000 characters.");
         if (IsMock) throw new SafetyException("Live guidance needs the connected cloud build. No offline walkthrough is available.");
         if (browserLauncher is null) throw new SafetyException("Browser launch is unavailable in this build.");
+        if (browserPlanner is null) throw new SafetyException("Live intent planning is unavailable in this build.");
         Stop();
         using var task = new CancellationTokenSource(); taskCancellation = task;
         try
@@ -253,7 +278,11 @@ public sealed partial class MainViewModel : ObservableObject
                 try { await login.SignInAsync(task.Token); } finally { IsSigningIn = false; }
             }
             task.Token.ThrowIfCancellationRequested(); await CheckConnectionCore(task.Token);
-            task.Token.ThrowIfCancellationRequested(); Status = $"Opening {plan.Browser}…"; Notice = "Opening your task window. Live image analysis will choose the next step.";
+            task.Token.ThrowIfCancellationRequested(); Status = "Understanding your task…"; Notice = "The agent is choosing where to begin. Screen sharing has not started.";
+            var decision = await browserPlanner.PlanAsync(prompt, task.Token);
+            task.Token.ThrowIfCancellationRequested();
+            var plan = BrowserLaunch.FromPlan(decision);
+            Status = $"Opening {plan.Browser}…"; Notice = decision.Message + $" ({plan.Address.Host})";
             var launched = await browserLauncher.OpenAsync(plan, task.Token);
             task.Token.ThrowIfCancellationRequested();
             SelectedSource = launched; SelectedLesson = plan.LessonId; SelectedMode = 0;
@@ -327,6 +356,7 @@ public sealed partial class MainViewModel : ObservableObject
         await controller.ResumeAsync(); ResumeConsent = false;
     });
     [RelayCommand] private Task ShowWhere() => Run(controller.ShowWhereAsync);
+    [RelayCommand] private Task FindTarget() => Run(() => controller.ObserveTurnAsync("locate"));
     [RelayCommand] private Task DidThis() => Run(() => controller.ObserveTurnAsync("i_did_this"));
     [RelayCommand] private Task Reobserve() => Run(() => controller.ObserveTurnAsync("reobserve"));
     [RelayCommand] private Task ExplainMore() => Run(() => controller.AskAsync("Explain why this step matters and what its terms mean."));

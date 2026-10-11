@@ -36,10 +36,12 @@ public sealed class WindowsPointer(PermissionSupervisor supervisor, IWindowTrack
     public event Action<(int X, int Y)>? TravelShown;
     public event Action<(int X, int Y)>? TargetShown;
     public event Action? TargetHidden;
+    public event Action? VisibilityLost;
     public bool ReducedMotion { get; set; }
     public string Instruction { get; private set; } = "";
     public string ExpectedAction { get; private set; } = "click";
     public PhysicalRect? TargetBounds { get; private set; }
+    public Func<PhysicalRect, CancellationToken, Task>? PrepareTargetAsync { get; set; }
     private void SetBounds(ScreenFrame frame, Target target)
     {
         var a = frame.Geometry.Map(target.Bounds.Left, target.Bounds.Top);
@@ -47,12 +49,25 @@ public sealed class WindowsPointer(PermissionSupervisor supervisor, IWindowTrack
         TargetBounds = new(a.X, a.Y, Math.Max(1, b.X - a.X + 1), Math.Max(1, b.Y - a.Y + 1));
     }
     public void SetHint(string instruction, string expectedAction) { Instruction = instruction; ExpectedAction = expectedAction; }
+    // Moves only our instruction dock, never the user's physical pointer or browser controls.
+    // Browser grounding calls this before its element hit-test so our own dock cannot block it.
+    public async Task PrepareVisualTargetAsync(ScreenFrame frame, Target target, CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        target.Validate(frame.Geometry.Id); supervisor.RequireObservation(frame.Observation.ScopeId);
+        if (PrepareTargetAsync is not { } prepare) return;
+        var a = frame.Geometry.Map(target.Bounds.Left, target.Bounds.Top);
+        var b = frame.Geometry.Map(target.Bounds.Right, target.Bounds.Bottom);
+        await prepare(new(a.X, a.Y, Math.Max(1, b.X - a.X + 1), Math.Max(1, b.Y - a.Y + 1)), cancellation);
+        cancellation.ThrowIfCancellationRequested(); supervisor.RequireObservation(frame.Observation.ScopeId);
+    }
     public async Task ShowVisualAsync(ScreenFrame frame, Target target, CaptureSource source, CancellationToken cancellation)
     {
         target.Validate(frame.Geometry.Id);
         var (nx, ny) = target.Bounds.Center; frame.RequireUnmaskedPoint(nx, ny);
         var destination = frame.Geometry.Map(nx, ny);
         supervisor.RequireObservation(source.ScopeId);
+        await PrepareVisualTargetAsync(frame, target, cancellation);
         if (!tracker.IsCurrentGeometry(source, frame.Geometry) || !tracker.IsPointVisible(source, destination.X, destination.Y))
             throw new SafetyException("Focus the browser window to see the guide marker.");
         // This is a drawn guide icon only. It never reads or moves the physical cursor.
@@ -116,8 +131,12 @@ public sealed class WindowsPointer(PermissionSupervisor supervisor, IWindowTrack
                 {
                     // A queued callback belonging to an old target must not hide its replacement.
                     if (version != visibilityVersion) return;
-                    try { if (supervisor.Epoch != epoch || !tracker.IsCurrentGeometry(source, frame.Geometry)) Hide(); }
-                    catch { Hide(); }
+                    try
+                    {
+                        if (supervisor.Epoch != epoch) Hide();
+                        else if (!tracker.IsCurrentGeometry(source, frame.Geometry)) { Hide(); VisibilityLost?.Invoke(); }
+                    }
+                    catch { Hide(); VisibilityLost?.Invoke(); }
                 }
             }, null, 100, 100);
         }

@@ -20,7 +20,7 @@ public sealed class SessionMachine
         [LessonState.Consent] = [LessonState.Observing],
         [LessonState.Observing] = [LessonState.Planning, LessonState.Verifying],
         [LessonState.Planning] = [LessonState.Presenting, LessonState.Recovering],
-        [LessonState.Presenting] = [LessonState.Pointing, LessonState.WaitingForLearner, LessonState.AwaitingDemonstrationApproval, LessonState.Completed],
+        [LessonState.Presenting] = [LessonState.Pointing, LessonState.WaitingForLearner, LessonState.WaitingForApplication, LessonState.AwaitingDemonstrationApproval, LessonState.Completed],
         [LessonState.Pointing] = [LessonState.WaitingForLearner, LessonState.Observing],
         [LessonState.WaitingForLearner] = [LessonState.Observing, LessonState.Verifying, LessonState.Pointing, LessonState.AnsweringQuestion, LessonState.AwaitingDemonstrationApproval],
         [LessonState.Verifying] = [LessonState.Presenting, LessonState.Recovering, LessonState.WaitingForApplication, LessonState.Completed],

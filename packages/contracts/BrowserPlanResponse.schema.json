@@ -1,0 +1,65 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "decision": {
+      "enum": [
+        "open_browser",
+        "clarify"
+      ],
+      "title": "Decision",
+      "type": "string"
+    },
+    "browser": {
+      "enum": [
+        "chrome",
+        "edge",
+        "firefox"
+      ],
+      "title": "Browser",
+      "type": "string"
+    },
+    "address": {
+      "anyOf": [
+        {
+          "maxLength": 2048,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Address"
+    },
+    "message": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Message",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "provider": {
+      "enum": [
+        "mock",
+        "gemini"
+      ],
+      "title": "Provider",
+      "type": "string"
+    }
+  },
+  "required": [
+    "decision",
+    "browser",
+    "message",
+    "provider"
+  ],
+  "title": "BrowserPlanResponse",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://desktop-guide.invalid/contracts/v1/BrowserPlanResponse.schema.json"
+}
