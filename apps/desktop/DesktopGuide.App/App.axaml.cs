@@ -126,7 +126,7 @@ public sealed partial class App : Application
                 var epoch = controller.Permissions.Epoch;
                 Dispatcher.UIThread.Post(() =>
                 {
-                    if (vm.ObservationConsent && vm.SelectedMode != 2 && !pointer.ReducedMotion && epoch == controller.Permissions.Epoch && controller.State == LessonState.Pointing)
+                    if (vm.ObservationConsent && vm.SelectedMode != 2 && !pointer.ReducedMotion && epoch == controller.Permissions.Epoch && controller.State is LessonState.Pointing or LessonState.WaitingForLearner)
                         overlay.ShowTravel(point);
                 });
             };
@@ -144,6 +144,17 @@ public sealed partial class App : Application
                 });
             };
             pointer.TargetHidden += () => Dispatcher.UIThread.Post(() => { overlay.Hide(); highlight.Hide(); companion.ClearTarget(); });
+            if (services.GetRequiredService<IInputExecutor>() is WindowsInputExecutor nativeInput)
+            {
+                nativeInput.CursorChanged += (x, y, phase, epoch) => Dispatcher.UIThread.Post(() =>
+                {
+                    if (epoch != controller.Permissions.Epoch || controller.State is not (LessonState.Acting or LessonState.Demonstrating)) return;
+                    if (phase == "moving") overlay.ShowTravel((x, y));
+                    else overlay.ShowTarget((x, y), "Checking the result after this action", "agent_" + phase, vm.ReducedMotion);
+                });
+                nativeInput.CursorHidden += epoch => Dispatcher.UIThread.Post(() => { if (epoch == controller.Permissions.Epoch) overlay.Hide(); });
+                vm.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(MainViewModel.ReducedMotion)) nativeInput.ReducedMotion = vm.ReducedMotion; };
+            }
             vm.PropertyChanged += (_, args) =>
             {
                 if (args.PropertyName == nameof(MainViewModel.IsAutonomous))

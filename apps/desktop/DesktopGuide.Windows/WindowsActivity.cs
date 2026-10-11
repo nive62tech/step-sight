@@ -21,6 +21,7 @@ public sealed class WindowsActivity : IUserActivityObserver, ICompanionHotkey
     private readonly Thread eventsThread;
     private volatile bool ending;
     private int pendingStop, pendingTakeover, pendingUnavailable, pendingActivity, pendingInvocation;
+    private int observationGeneration = 1;
     public event Action? Invoked;
     public bool CompanionHotkeyRegistered { get; private set; }
     public event Action? Activity;
@@ -30,7 +31,7 @@ public sealed class WindowsActivity : IUserActivityObserver, ICompanionHotkey
     public bool HotkeyRegistered { get; private set; }
     public bool IsAssistantInputActive { get => active; set => active = value; }
     public bool AutonomousControlActive { get => autonomous; set => autonomous = value; }
-    public bool ObservationEnabled { get => observationEnabled; set => observationEnabled = value; }
+    public bool ObservationEnabled { get => observationEnabled; set { if (observationEnabled != value) { Interlocked.Increment(ref observationGeneration); observationEnabled = value; } } }
     public bool TrackingAvailable => mouseHandle != 0 && keyboardHandle != 0
         && Environment.TickCount64 - Interlocked.Read(ref heartbeat) < 2000
         && Environment.TickCount64 - Interlocked.Read(ref dispatcherHeartbeat) < 2000;
@@ -80,26 +81,28 @@ public sealed class WindowsActivity : IUserActivityObserver, ICompanionHotkey
     private bool Ignored(nint window) { lock (ignored) return ignored.Contains(Native.GetAncestor(window, 2)); }
     private nint Mouse(int code, nuint message, nint data)
     {
+        var generation = Volatile.Read(ref observationGeneration);
         if (code >= 0 && observationEnabled)
         {
             var info = Marshal.PtrToStructure<Native.MouseHook>(data);
             if (info.ExtraInfo != Native.InputTag)
             {
-                if (active || autonomous) Queue(ref pendingTakeover);
-                if (message != 0x200 && !Ignored(Native.WindowFromPoint(info.Point))) Queue(ref pendingActivity);
+                if (active || autonomous) QueueObservation(ref pendingTakeover, generation);
+                if (message != 0x200 && !Ignored(Native.WindowFromPoint(info.Point))) QueueObservation(ref pendingActivity, generation);
             }
         }
         return Native.CallNextHookEx(mouseHandle, code, message, data);
     }
     private nint Keyboard(int code, nuint message, nint data)
     {
+        var generation = Volatile.Read(ref observationGeneration);
         if (code >= 0 && observationEnabled && message is 0x100 or 0x104)
         {
             var info = Marshal.PtrToStructure<Native.KeyboardHook>(data);
             if (info.ExtraInfo != Native.InputTag)
             {
-                if (active || autonomous) Queue(ref pendingTakeover);
-                if (!Ignored(Native.GetForegroundWindow())) Queue(ref pendingActivity);
+                if (active || autonomous) QueueObservation(ref pendingTakeover, generation);
+                if (!Ignored(Native.GetForegroundWindow())) QueueObservation(ref pendingActivity, generation);
             }
         }
         return Native.CallNextHookEx(keyboardHandle, code, message, data);
@@ -112,6 +115,8 @@ public sealed class WindowsActivity : IUserActivityObserver, ICompanionHotkey
         ending = true; signal.Set(); eventsThread.Join(TimeSpan.FromSeconds(2)); signal.Dispose();
     }
     private void Queue(ref int flag) { Interlocked.Exchange(ref flag, 1); signal.Set(); }
+    private void QueueObservation(ref int flag, int generation) { Interlocked.Exchange(ref flag, generation); signal.Set(); }
+    private bool CurrentObservation(ref int flag) => Interlocked.Exchange(ref flag, 0) == Volatile.Read(ref observationGeneration) && observationEnabled;
     private void EventsLoop()
     {
         while (!ending)
@@ -122,8 +127,8 @@ public sealed class WindowsActivity : IUserActivityObserver, ICompanionHotkey
             {
                 if (Interlocked.Exchange(ref pendingStop, 0) != 0) EmergencyStop?.Invoke();
                 if (Interlocked.Exchange(ref pendingUnavailable, 0) != 0) SessionUnavailable?.Invoke();
-                if (Interlocked.Exchange(ref pendingTakeover, 0) != 0) Takeover?.Invoke();
-                if (Interlocked.Exchange(ref pendingActivity, 0) != 0) Activity?.Invoke();
+                if (CurrentObservation(ref pendingTakeover)) Takeover?.Invoke();
+                if (CurrentObservation(ref pendingActivity)) Activity?.Invoke();
                 if (Interlocked.Exchange(ref pendingInvocation, 0) != 0) Invoked?.Invoke();
             }
             catch (Exception) { Interlocked.Exchange(ref pendingUnavailable, 1); }

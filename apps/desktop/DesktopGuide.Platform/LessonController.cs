@@ -39,6 +39,11 @@ public sealed class LessonController : IDisposable
     private int resuming;
     private Task remoteIntent = Task.CompletedTask;
     private string? latestVerification;
+    public const int MaximumRecoveryAttempts = 3;
+    public int RetryAttempt { get; private set; }
+    public event Action<int>? RetryChanged;
+    private void SetRetry(int attempt) { RetryAttempt = attempt; RetryChanged?.Invoke(attempt); }
+    private static bool IsTransient(Exception ex) => ex is TransientGuidanceException or HttpRequestException or OperationCanceledException;
     public GuideMarkerState MarkerState { get; private set; }
     public bool HasCurrentInstruction => previous is not null;
     public bool CanLocateCurrentTarget => previous is not null && previous.ExpectedUserAction != "wait";
@@ -80,7 +85,7 @@ public sealed class LessonController : IDisposable
             if (mode == InteractionMode.Autonomous && State is not (LessonState.Idle or LessonState.Stopped or LessonState.Completed or LessonState.Paused or LessonState.PrivacyPaused or LessonState.NetworkInterrupted)
                 && source is not null && (tracker.IsLocked || !tracker.IsForegroundAndVisible(source)))
             { Interrupt(LessonState.PrivacyPaused); Notice?.Invoke("Autonomous control paused because the task window lost focus. Resume when ready."); return; }
-            if (State is not (LessonState.Idle or LessonState.Stopped or LessonState.Completed) && !activity.TrackingAvailable)
+            if (State is not (LessonState.Idle or LessonState.Stopped or LessonState.Completed or LessonState.Paused or LessonState.PrivacyPaused or LessonState.NetworkInterrupted) && !activity.TrackingAvailable)
             { Interrupt(LessonState.PrivacyPaused); Notice?.Invoke("Local input observer heartbeat failed. Resume only after the observer is available."); return; }
             if (State is LessonState.WaitingForLearner or LessonState.WaitingForApplication or LessonState.Recovering)
             {
@@ -163,27 +168,22 @@ public sealed class LessonController : IDisposable
                 }
                 waitingChecks = 0;
                 if (proposal is null && previous.ExpectedUserAction is "click" or "scroll" or "type"
-                    && latestVerification != "UNCERTAIN" && recoveryAttempts < 2)
+                    && latestVerification != "UNCERTAIN" && recoveryAttempts < MaximumRecoveryAttempts)
                 {
                     recoveryAttempts++;
-                    Notice?.Invoke("The target is blocked or unavailable. Checking the screen for a safe way forward...");
+                    Notice?.Invoke($"Finding another safe way forward · retry {recoveryAttempts}/{MaximumRecoveryAttempts}...");
                     await ObserveTurnAsync("recover");
                     continue;
                 }
                 var action = proposal ?? throw new SafetyException("No safe action is visible yet. Check the page, then Resume to analyse it again.");
                 LocalRiskPolicy.RequireAutonomousAction(new(previous, action));
                 Notice?.Invoke("");
-                if (previous.Target is { } target)
-                {
-                    pointer.SetHint(previous.Instruction, previous.ExpectedUserAction);
-                    await pointer.ShowVisualAsync(frame, target, source, token);
-                    SetMarkerState(GuideMarkerState.Visible);
-                }
                 var fresh = await capture.CaptureAsync(source, Masks, token);
                 if (epoch != Permissions.Epoch) return;
                 if (fresh.Geometry != frame.Geometry || fresh.PixelDigest != frame.PixelDigest)
                 {
-                    if (++blockedAttempts >= 3) throw new SafetyException("The screen keeps changing. Autonomous control paused before clicking.");
+                    if (++blockedAttempts > MaximumRecoveryAttempts) throw new SafetyException("The screen kept changing after 3 retries. Paused before clicking; Resume will read a fresh image.");
+                    Notice?.Invoke($"Screen changed · refreshing target {blockedAttempts}/{MaximumRecoveryAttempts}...");
                     await ObserveTurnAsync("reobserve"); continue;
                 }
                 var key = (frame.PixelDigest, action.Action);
@@ -199,10 +199,14 @@ public sealed class LessonController : IDisposable
                 if (receipt.ProposalId != action.Id || receipt.LocalEpoch != epoch || receipt.Outcome is not ("dispatched" or "not_dispatched" or "unknown"))
                     throw new SafetyException("Input returned an incompatible receipt. Control has been paused.");
                 if (session is not null)
-                    await api.EventAsync(session.Id, new(1, Guid.NewGuid(), ++eventSequence, epoch, session.SessionVersion, "dispatch", action.Id, receipt.Outcome), token);
+                {
+                    // Recording a receipt must not cause a second dispatch when the network fails.
+                    try { await api.EventAsync(session.Id, new(1, Guid.NewGuid(), ++eventSequence, epoch, session.SessionVersion, "dispatch", action.Id, receipt.Outcome), token); }
+                    catch (Exception ex) when (IsTransient(ex) && !token.IsCancellationRequested) { }
+                }
                 if (receipt.Outcome == "not_dispatched")
                 {
-                    if (++blockedAttempts >= 3) throw new SafetyException("Input could not reach the current target. Autonomous control paused.");
+                    if (++blockedAttempts > MaximumRecoveryAttempts) throw new SafetyException("Input could not reach the target after 3 fresh checks. Paused; Resume will analyse the current screen.");
                     machine.Transition(LessonState.Observing); await ObserveTurnAsync("reobserve"); continue;
                 }
                 blockedAttempts = 0; recoveryAttempts = 0;
@@ -240,15 +244,47 @@ public sealed class LessonController : IDisposable
             pointer.Hide(); SetMarkerState(GuideMarkerState.Locating); speech.Stop(); proposal = null; ProposalChanged?.Invoke(null);
             if (State is not (LessonState.Observing or LessonState.Verifying)) machine.Transition(LessonState.Observing);
             var timer = Stopwatch.StartNew();
-            var current = await capture.CaptureAsync(source, Masks, token);
-            var captureMs = timer.Elapsed.TotalMilliseconds; timer.Restart();
+            ScreenFrame current; SessionView localSession; TurnResponse result;
+            double captureMs, roundtripMs;
+            for (var attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    token.ThrowIfCancellationRequested();
+                    if (attempt > 0)
+                    {
+                        SetRetry(attempt);
+                        Notice?.Invoke($"Analysis interrupted · retry {attempt}/{MaximumRecoveryAttempts}. Reading a fresh screen...");
+                        await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt), token);
+                        // Invalidate/drain an in-flight server turn before submitting a new image.
+                        var latest = await api.GetAsync(session.Id, token);
+                        if (latest.State == "STOPPED") throw new SafetyException("This task was stopped. Start a new task.");
+                        var synced = await api.IntentAsync(latest.Id, "resume", latest.SessionVersion, token);
+                        if (epoch != Permissions.Epoch) return;
+                        session = synced;
+                        if (previous?.Id != synced.PendingStep?.Id)
+                        {
+                            // A lost response may already have changed server context. Treat its
+                            // unexecuted instruction as history, never as a completed action.
+                            eventKind = "resume"; locating = false;
+                        }
+                        previous = synced.PendingStep;
+                    }
+                    timer.Restart();
+                    current = await capture.CaptureAsync(source, Masks, token);
+                    captureMs = timer.Elapsed.TotalMilliseconds; timer.Restart();
+                    if (epoch != Permissions.Epoch) return;
+                    frame = current;
+                    if (State == LessonState.Observing) machine.Transition(previous is null ? LessonState.Planning : LessonState.Verifying);
+                    localSession = session;
+                    result = await api.TurnAsync(localSession.Id, new(1, Guid.NewGuid(), localSession.SessionVersion, current.Observation, eventKind, previous), current, token);
+                    roundtripMs = timer.Elapsed.TotalMilliseconds; timer.Restart();
+                    break;
+                }
+                catch (Exception ex) when (IsTransient(ex) && !token.IsCancellationRequested && epoch == Permissions.Epoch && attempt < MaximumRecoveryAttempts) { }
+            }
             if (epoch != Permissions.Epoch) return;
-            frame = current;
-            if (State != LessonState.Verifying) machine.Transition(previous is null ? LessonState.Planning : LessonState.Verifying);
-            var localSession = session;
-            var result = await api.TurnAsync(localSession.Id, new(1, Guid.NewGuid(), localSession.SessionVersion, current.Observation, eventKind, previous), current, token);
-            var roundtripMs = timer.Elapsed.TotalMilliseconds; timer.Restart();
-            if (epoch != Permissions.Epoch) return;
+            SetRetry(0); Notice?.Invoke("");
             ValidateResponse(result, localSession, current);
             latestVerification = result.Verification?.Status;
             if (locating && (result.Step is not { } located || previous is null || located.Id != previous.Id
@@ -310,7 +346,8 @@ public sealed class LessonController : IDisposable
         catch (OperationCanceledException)
         {
             pointer.Hide(); SetMarkerState(previous is null ? GuideMarkerState.Off : GuideMarkerState.ScreenChanged);
-            Notice?.Invoke("Live image analysis timed out. Use Check screen to retry, or Find click target for the current instruction.");
+            if (mode == InteractionMode.Autonomous) { PauseLocal(); Notice?.Invoke("Analysis timed out after 3 retries. Resume will read a fresh screen in autonomous mode."); return; }
+            Notice?.Invoke("Live image analysis timed out after 3 retries. Use Check screen to retry.");
             if (State is LessonState.Planning or LessonState.Verifying) machine.Transition(LessonState.Recovering);
         }
         catch (SafetyException ex)
@@ -530,7 +567,7 @@ public sealed class LessonController : IDisposable
         catch (Exception) { /* No dispatch comes from this observer. Explicit turn shows actionable errors. */ }
         finally { Interlocked.Exchange(ref polling, 0); }
     }
-    private void Takeover() { Interrupt(LessonState.Paused); Notice?.Invoke("You took control. Resume locally when ready."); }
+    private void Takeover() { if (!activity.ObservationEnabled) return; Interrupt(LessonState.Paused); Notice?.Invoke("You took control. Resume locally when ready."); }
     private void MarkerVisibilityLost()
     {
         if (State is LessonState.WaitingForLearner or LessonState.Pointing) SetMarkerState(GuideMarkerState.FocusRequired);
@@ -543,10 +580,11 @@ public sealed class LessonController : IDisposable
         catch (Exception) { if (epoch == Permissions.Epoch) SetMarkerState(GuideMarkerState.FocusRequired); }
         finally { Interlocked.Exchange(ref restoringMarker, 0); }
     }
-    private void Unavailable() => Interrupt(LessonState.PrivacyPaused);
+    private void Unavailable() { if (activity.ObservationEnabled) Interrupt(LessonState.PrivacyPaused); }
     private void Interrupt(LessonState state)
     {
         Permissions.Revoke(); capture.StopCapture(); pointer.Hide(); speech.Stop(); microphone.Cancel(); executor.ReleaseHeldControls();
+        SetRetry(0);
         SetMarkerState(GuideMarkerState.Off);
         activity.ObservationEnabled = false;
         activity.AutonomousControlActive = false;
@@ -555,6 +593,7 @@ public sealed class LessonController : IDisposable
     }
     public void StopLocal()
     {
+        if (State == LessonState.Stopped) { Interrupt(LessonState.Stopped); return; }
         var stoppedSession = session;
         Interrupt(LessonState.Stopped);
         if (State != LessonState.Stopped) machine.Transition(LessonState.Stopped);
@@ -562,6 +601,7 @@ public sealed class LessonController : IDisposable
     }
     public void PauseLocal()
     {
+        if (State is LessonState.Stopped or LessonState.Paused or LessonState.PrivacyPaused or LessonState.NetworkInterrupted) return;
         Interrupt(LessonState.Paused);
         if (session is not null) QueueIntent(session, "pause");
     }
@@ -577,7 +617,6 @@ public sealed class LessonController : IDisposable
         {
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             var latest = await api.GetAsync(snapshot.Id, deadline.Token);
-            if ((pointAllowed || demonstrationAllowed) && !activity.TrackingAvailable) throw new SafetyException("Input observer unavailable; resume remains disarmed");
             var response = await api.IntentAsync(latest.Id, intent, latest.SessionVersion, deadline.Token);
             lock (sessionGate) { if (session?.Id == snapshot.Id) session = response; }
         }
@@ -593,7 +632,7 @@ public sealed class LessonController : IDisposable
         {
             if (mode == InteractionMode.Autonomous && !autonomousConsent) throw new SafetyException("Resume autonomous control only with fresh task consent.");
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(Permissions.Cancellation);
-            deadline.CancelAfter(TimeSpan.FromSeconds(50));
+            deadline.CancelAfter(TimeSpan.FromSeconds(180));
             // A cancelled HTTP request or executor can finish late. Drain the old local
             // loop and observation before arming a new epoch; never silently skip resume.
             await autonomousGate.WaitAsync(deadline.Token);
@@ -602,12 +641,7 @@ public sealed class LessonController : IDisposable
             Task pending; lock (sessionGate) pending = remoteIntent;
             await pending.WaitAsync(deadline.Token);
             if (epoch != Permissions.Epoch) return;
-            var latest = await api.GetAsync(snapshot.Id, deadline.Token);
-            if (epoch != Permissions.Epoch) return;
-            if (latest.State == "STOPPED") throw new SafetyException("This lesson was stopped. Start a new lesson with fresh consent.");
-            if (mode == InteractionMode.Autonomous && (source.Kind != "window" || !activity.TrackingAvailable || !tracker.IsForegroundAndVisible(source)))
-                throw new SafetyException("Focus the task window and restore the input observer before resuming autonomous control.");
-            var resumed = await api.IntentAsync(snapshot.Id, "resume", latest.SessionVersion, deadline.Token);
+            var resumed = await SynchronizeResumeAsync(snapshot.Id, deadline.Token);
             if (epoch != Permissions.Epoch) return;
             if (mode == InteractionMode.Autonomous && (source.Kind != "window" || !activity.TrackingAvailable || !tracker.IsForegroundAndVisible(source)))
                 throw new SafetyException("Focus the task window and restore the input observer before resuming autonomous control.");
@@ -624,9 +658,24 @@ public sealed class LessonController : IDisposable
         }
         catch (OperationCanceledException) { if (epoch == Permissions.Epoch) Notice?.Invoke("The previous analysis is still ending. Control remains paused; try Resume again."); }
         catch (Exception ex) { if (epoch == Permissions.Epoch) Notice?.Invoke(Friendly(ex)); }
-        finally { Interlocked.Exchange(ref resuming, 0); }
+        finally { if (epoch == Permissions.Epoch) SetRetry(0); Interlocked.Exchange(ref resuming, 0); }
     }
-    private static string Friendly(Exception ex) => ex is SafetyException ? ex.Message : "The service or device is unavailable. Local input is disarmed; check setup and resume explicitly.";
+    private async Task<SessionView> SynchronizeResumeAsync(Guid id, CancellationToken token)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                token.ThrowIfCancellationRequested();
+                if (attempt > 0) { SetRetry(attempt); Notice?.Invoke($"Reconnecting task · retry {attempt}/{MaximumRecoveryAttempts}..."); await Task.Delay(500 * attempt, token); }
+                var latest = await api.GetAsync(id, token);
+                if (latest.State == "STOPPED") throw new SafetyException("This task was stopped. Start a new task with fresh consent.");
+                return await api.IntentAsync(id, "resume", latest.SessionVersion, token);
+            }
+            catch (Exception ex) when (IsTransient(ex) && !token.IsCancellationRequested && attempt < MaximumRecoveryAttempts) { }
+        }
+    }
+    private static string Friendly(Exception ex) => ex is SafetyException ? ex.Message : "The service is still unavailable after recovery attempts. Input is paused. Resume will reconnect and analyse a fresh screen in the same mode.";
     public void Dispose()
     {
         disposed = true; StopLocal(); privacyTimer.Dispose(); debounce?.Cancel();

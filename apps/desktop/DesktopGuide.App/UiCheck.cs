@@ -116,6 +116,12 @@ internal static class UiCheck
                 vm.Instruction = "Open the display settings.";
                 vm.Notice = "You took control. Resume locally when ready.";
             }
+            if (scene == "autonomous-thinking")
+            {
+                vm.ActiveView = "lesson"; vm.LessonState = LessonState.Planning; vm.IsBusy = true;
+                vm.Status = "Analysing the live screen…"; vm.RetryAttempt = 2;
+                vm.Instruction = "Reading the updated page"; vm.Notice = "Analysis interrupted · retry 2/3. Reading a fresh screen…";
+            }
         }
         if (scene.EndsWith("listening", StringComparison.Ordinal)) { vm.VoiceListening = true; vm.VoiceStatus = "Listening... click Finish when you're done."; }
         if (scene == "signing-in") vm.IsSigningIn=true;

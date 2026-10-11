@@ -2,12 +2,27 @@ using System.Net;
 using System.Text.Json;
 using DesktopGuide.App.Services;
 using DesktopGuide.Core;
+using DesktopGuide.Platform;
 using Xunit;
 
 namespace DesktopGuide.AppTests;
 
 public sealed class TurnTransportTests
 {
+    [Theory] [InlineData(HttpStatusCode.NotFound, true)] [InlineData(HttpStatusCode.Unauthorized, false)]
+    public async Task MissingUploadCanRetryButExpiredSignInCannot(HttpStatusCode recovery, bool retryable)
+    {
+        var posts = 0; var gets = 0;
+        using var http = new HttpClient(new Handler((request, _) =>
+        {
+            if (request.Method == HttpMethod.Post) { posts++; throw new HttpRequestException("Upload never arrived"); }
+            gets++; return Task.FromResult(new HttpResponseMessage(recovery));
+        })) { BaseAddress = new Uri(Config.ApiOrigin) };
+        using var api = new GuidanceApiClient(Config, new Login(), http); var frame = Frame();
+        var error = await Record.ExceptionAsync(() => api.TurnAsync(Guid.NewGuid(), new(1, Guid.NewGuid(), 0, frame.Observation, "start", null), frame, CancellationToken.None));
+        if (retryable) Assert.IsType<TransientGuidanceException>(error); else Assert.IsType<SafetyException>(error);
+        Assert.Equal(1, posts); Assert.Equal(1, gets);
+    }
     private sealed class Login : ILoginSession
     {
         public bool SignedIn => true; public bool IsMock => false; public string? AccountName => null;

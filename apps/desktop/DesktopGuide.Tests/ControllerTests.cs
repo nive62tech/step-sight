@@ -6,6 +6,37 @@ namespace DesktopGuide.Tests;
 
 public sealed class ControllerTests
 {
+    [Fact]
+    public async Task TransientAnalysisRetriesFreshImagesAndReceiptFailureNeverReplaysInput()
+    {
+        var env = new Environment { TransientFailures = 2, ReceiptFailures = 1, CompleteAfter = 1 };
+        using var c = env.Controller(); var retries = new List<int>(); c.RetryChanged += retries.Add;
+        await c.PreviewAsync(env.Source);
+        await c.StartAsync(env.Source, "Open preferences", "browser", InteractionMode.Autonomous, false, false, false, true);
+        Assert.Equal(LessonState.Completed, c.State); Assert.Equal(1, env.Dispatches);
+        Assert.Contains(2, retries); Assert.Equal(4, env.Turns);
+        Assert.Equal(env.Observations.Count, env.Observations.Distinct().Count());
+    }
+    [Fact]
+    public async Task ResumeRetriesConflictsWithoutChangingMode()
+    {
+        var env = new Environment { ManualStep = true, FreshResume = true, CompleteAfter = 1 };
+        using var c = env.Controller(); await c.PreviewAsync(env.Source);
+        await c.StartAsync(env.Source, "Open preferences", "browser", InteractionMode.Autonomous, false, false, false, true);
+        env.ManualStep = false; env.ResumeFailures = 2;
+        await c.ResumeAsync(true);
+        Assert.Equal(InteractionMode.Autonomous, c.Mode); Assert.Equal(LessonState.Completed, c.State); Assert.Equal(1, env.Dispatches);
+    }
+    [Fact]
+    public async Task StopDuringRetryPreventsAnotherAnalysisOrInput()
+    {
+        var env = new Environment { TransientFailures = 9 }; using var c = env.Controller();
+        c.RetryChanged += attempt => { if (attempt == 1) c.StopLocal(); };
+        await c.PreviewAsync(env.Source);
+        await c.StartAsync(env.Source, "Open preferences", "browser", InteractionMode.Autonomous, false, false, false, true);
+        Assert.Equal(1, env.Turns); Assert.Equal(0, env.Dispatches); Assert.Equal(LessonState.Stopped, c.State);
+    }
+
     [Theory] [InlineData(InteractionMode.Guide)] [InlineData(InteractionMode.Autonomous)]
     public async Task ResumeReplacesOldManualEnglishStepAndKeepsOriginalMode(InteractionMode mode)
     {
@@ -51,7 +82,7 @@ public sealed class ControllerTests
         var env = new Environment { MissingTarget = true, Verify = "NOT_YET" }; using var c = env.Controller();
         await c.PreviewAsync(env.Source);
         await c.StartAsync(env.Source, "Find trains", "browser", InteractionMode.Autonomous, false, false, false, true);
-        Assert.Equal(new[] { "start", "recover", "recover" }, env.Events);
+        Assert.Equal(new[] { "start", "recover", "recover", "recover" }, env.Events);
         Assert.Equal(0, env.Dispatches); Assert.Equal(LessonState.Paused, c.State);
     }
     [Fact]
@@ -81,7 +112,7 @@ public sealed class ControllerTests
         await c.StartAsync(env.Source, "Open preferences", "browser", InteractionMode.Autonomous, false, false, false, true);
         Assert.Equal(LessonState.Paused, c.State); Assert.Equal(0, env.Dispatches);
         Assert.False(env.AutonomousControlActive); Assert.False(env.ObservationEnabled);
-        Assert.InRange(env.Turns, 1, 3);
+        Assert.InRange(env.Turns, 1, 4);
     }
     [Theory] [InlineData("NOT_YET")] [InlineData("DIFFERENT_STATE")] [InlineData("UNCERTAIN")]
     public async Task UnknownDispatchIsVerifiedOnceAndNeverRetried(string verification)
@@ -137,6 +168,8 @@ public sealed class ControllerTests
         public bool AutonomousControlActive { get; set; }
         public List<string> Events = [];
         public bool ServiceTimeout;
+        public int TransientFailures, ResumeFailures, ReceiptFailures;
+        public List<Guid> Observations = [];
         public bool WaitingForPage;
         public bool MissingTarget, LocateMissingTarget, ChangeLocatedInstruction;
         public int LocateCalls;
@@ -186,7 +219,7 @@ public sealed class ControllerTests
         public void RaiseStop() => EmergencyStop?.Invoke();
         public void RaiseLock() => SessionUnavailable?.Invoke();
         public IReadOnlyList<CaptureSource> ListSources() => [Source];
-        public Task<ScreenFrame> CaptureAsync(CaptureSource source, IReadOnlyList<Bounds> masks, CancellationToken cancellation) => Task.FromResult(Frame);
+        public Task<ScreenFrame> CaptureAsync(CaptureSource source, IReadOnlyList<Bounds> masks, CancellationToken cancellation) => Task.FromResult(Frame = Frame with { Observation = Frame.Observation with { Id = Guid.NewGuid(), CapturedAt = DateTimeOffset.UtcNow }, PixelDigest = ChangeBeforeDispatch && Turns > 0 ? Guid.NewGuid().ToString() : Frame.PixelDigest });
         public Task PointAsync(ScreenFrame frame, Target target, CaptureSource source, CancellationToken cancellation)
         { Permissions.GuideBatch(frame, true, () => PointerMoves++); return Task.CompletedTask; }
         public void Hide() { }
@@ -205,7 +238,8 @@ public sealed class ControllerTests
         public Task<SessionView> GetAsync(Guid session, CancellationToken cancellation) => Task.FromResult(Session with { PendingStep = Pending });
         public async Task<TurnResponse> TurnAsync(Guid session, TurnRequest request, ScreenFrame frame, CancellationToken cancellation)
         {
-            Turns++; Events.Add(request.EventKind); TurnEntered.TrySetResult(true);
+            Turns++; Observations.Add(frame.Observation.Id); Events.Add(request.EventKind);
+            if (TransientFailures-- > 0) throw new TransientGuidanceException("Synthetic disconnect"); TurnEntered.TrySetResult(true);
             if (ServiceTimeout) throw new TaskCanceledException("Synthetic HTTP deadline");
             if (BlockTurn) await ContinueTurn.Task; // Deliberately ignore cancellation to exercise late-response defense.
             if (request.EventKind == "locate")
@@ -243,9 +277,9 @@ public sealed class ControllerTests
                 request.PreviousStep is null || (FreshResume && request.EventKind == "resume") ? null : new(verification, [new(frame.Observation.Id, "Visible state")], verification == "CONFIRMED" ? [] : ["Expected state"], "Return to Settings", "gemini"), complete || step.Target is null ? null : proposal, complete);
         }
         public Task<SessionView> IntentAsync(Guid session, string intent, int version, CancellationToken cancellation)
-        { Session = Session with { State = intent.ToUpperInvariant(), SessionVersion = version + 1 }; return Task.FromResult(Session); }
+        { if (intent == "resume" && ResumeFailures-- > 0) throw new TransientGuidanceException("Synthetic resume conflict"); Session = Session with { State = intent.ToUpperInvariant(), SessionVersion = version + 1 }; return Task.FromResult(Session); }
         public Task<QuestionResponse> QuestionAsync(Guid session, int version, string text, CancellationToken cancellation) => Task.FromResult(new QuestionResponse("Practice settings change the workspace appearance.", "gemini"));
-        public Task EventAsync(Guid session, LearnerEvent request, CancellationToken cancellation) => Task.CompletedTask;
+        public Task EventAsync(Guid session, LearnerEvent request, CancellationToken cancellation) { if (ReceiptFailures-- > 0) throw new TransientGuidanceException("Receipt transport lost"); return Task.CompletedTask; }
         public Task<string> TranscribeAsync(byte[] wav, CancellationToken cancellation) => Task.FromResult("Why Settings?");
         public Task<byte[]> SynthesizeAsync(string text, CancellationToken cancellation) => Task.FromResult(Array.Empty<byte>());
         public Task DeleteAsync(Guid session, CancellationToken cancellation) => Task.CompletedTask;
@@ -451,7 +485,7 @@ public sealed class ControllerTests
         Assert.Equal(LessonState.WaitingForLearner, controller.State);
         Assert.Equal(GuideMarkerState.Visible, controller.MarkerState);
         Assert.Equal(originalStep.Id, env.Pending!.Id); Assert.Equal(originalStep.Instruction, env.Pending.Instruction);
-        Assert.Equal(env.Frame.Observation.Id, env.Pending.SourceObservationId);
+        Assert.Equal(env.Observations.Last(), env.Pending.SourceObservationId);
         Assert.Equal(2, env.VisualMarkers); Assert.Equal(1, env.LocateCalls); Assert.Equal(3, env.Turns);
         Assert.Equal(0, env.Session.CompletedSteps); Assert.Equal(0, env.Dispatches);
     }

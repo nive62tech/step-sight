@@ -11,6 +11,23 @@ namespace DesktopGuide.AppTests;
 
 public sealed class OnboardingTests
 {
+    [Fact] public async Task StopImmediatelyClearsBusyAndLateOldTaskCannotCancelItsReplacement()
+    {
+        var launcher = new Launcher(); using var f = new Fixture(launcher);
+        await f.Vm.SignInCommand.ExecuteAsync(null);
+        var old = f.Vm.ContinueSetupCommand.ExecuteAsync(null); var first = launcher.Complete;
+        Assert.True(f.Vm.IsBusy); f.Vm.StopCommand.Execute(null);
+        Assert.False(f.Vm.IsBusy); Assert.True(f.Vm.CanSubmitTask); Assert.False(f.Vm.IsThinking);
+        launcher.Complete = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var next = f.Vm.ContinueSetupCommand.ExecuteAsync(null);
+        Assert.True(f.Vm.IsBusy); Assert.Equal(2, launcher.Opens);
+        first.SetResult(new(Guid.NewGuid(), Guid.NewGuid(), "old browser", "window")); await old;
+        Assert.True(f.Vm.IsBusy); Assert.Null(f.Vm.SelectedSource);
+        f.Vm.StopCommand.Execute(null);
+        launcher.Complete.SetResult(new(Guid.NewGuid(), Guid.NewGuid(), "next browser", "window")); await next;
+        Assert.False(f.Vm.IsBusy); Assert.Equal("", f.Vm.Notice); Assert.Equal(LessonState.Stopped, f.Controller.State);
+    }
+
     private sealed class PhoneApi : IRemoteAgentClient
     {
         public Channel<RemoteCommand?> Responses = Channel.CreateUnbounded<RemoteCommand?>();

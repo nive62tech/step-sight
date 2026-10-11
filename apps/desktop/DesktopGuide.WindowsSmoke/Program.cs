@@ -17,6 +17,7 @@ internal static class Program
             return 2;
         }
         WindowStyles.EnableDpiAwareness();
+        if (args.Contains("--live-recovery")) return LiveRecovery.Run();
         var report = new Dictionary<string, object> { ["date"] = DateTimeOffset.UtcNow, ["provider"] = "synthetic fixture; no model", ["scope"] = "test window only" };
         var title = "Desktop Guide Training Sandbox — smoke " + Guid.NewGuid().ToString("N");
         using var form = new Form { Text = title, Width = 650, Height = 390, StartPosition = FormStartPosition.CenterScreen };

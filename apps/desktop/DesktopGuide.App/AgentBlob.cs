@@ -43,6 +43,19 @@ public sealed class AgentBlob : Control
         context.DrawEllipse(new SolidColorBrush(Color.FromArgb(20, hue.R, hue.G, hue.B)), null, new Rect(cx-size*.31, cy+size*.37, size*.62, size*.055));
         var glow = new RadialGradientBrush { GradientStops = new() { new(Color.FromArgb(55,hue.R,hue.G,hue.B),0),new(Colors.Transparent,1) } };
         context.DrawEllipse(glow,null,new Rect(cx-radius*1.65,cy-radius*1.65,radius*3.3,radius*3.3));
+        if (Busy)
+        {
+            // A visible orbit distinguishes active reasoning from the idle breathing surface.
+            var orbit = radius * 1.35;
+            context.DrawEllipse(null, new Pen(new SolidColorBrush(Color.FromArgb(55, hue.R, hue.G, hue.B)), 1.5), new Point(cx, cy), orbit, orbit);
+            for (var i = 0; i < 3; i++)
+            {
+                var angle = (ReducedMotion ? -.8 : time * 2.7) - i * .32;
+                var dot = size * (.025 - i * .004);
+                context.DrawEllipse(new SolidColorBrush(Color.FromArgb((byte)(255-i*65), hue.R, hue.G, hue.B)), null,
+                    new Point(cx + Math.Cos(angle) * orbit, cy + Math.Sin(angle) * orbit), dot, dot);
+            }
+        }
         const int rings = 22, segments = 36;
         var vertices = new Vector3[(rings+1)*(segments+1)];
         var lights = new double[vertices.Length]; var points = new Point[vertices.Length];

@@ -154,6 +154,9 @@ public sealed class WindowsPointer(PermissionSupervisor supervisor, IWindowTrack
 public sealed class WindowsInputExecutor(PermissionSupervisor supervisor, IWindowTracker tracker,
     IUserActivityObserver activity, IScreenCapture capture) : IInputExecutor
 {
+    public bool ReducedMotion { get; set; }
+    public event Action<int, int, string, long>? CursorChanged;
+    public event Action<long>? CursorHidden;
     private readonly SemaphoreSlim serialized = new(1);
     private readonly object heldGate = new();
     private readonly HashSet<ushort> heldKeys = [];
@@ -162,6 +165,7 @@ public sealed class WindowsInputExecutor(PermissionSupervisor supervisor, IWindo
     public async Task<ActionReceipt> ExecuteAsync(LocalCapability capability, ActionProposal proposal, ScreenFrame frame,
         CaptureSource source, CancellationToken cancellation)
     {
+        var inputEpoch = supervisor.Epoch;
         await serialized.WaitAsync(cancellation);
         bool dispatched = false;
         try
@@ -187,18 +191,30 @@ public sealed class WindowsInputExecutor(PermissionSupervisor supervisor, IWindo
                 frame.RequireUnmaskedPoint(action.X!.Value, action.Y!.Value);
                 var point = frame.Geometry.Map(action.X!.Value, action.Y!.Value);
                 if (!tracker.IsPointVisible(source, point.X, point.Y)) throw new SafetyException("Action target is covered");
-                Batch(() => InputNative.Move(point.X, point.Y), changesApplication: false);
+                if (!Native.GetCursorPos(out var start)) throw new SafetyException("Pointer unavailable");
+                var segments = ReducedMotion ? 1 : 14;
+                for (var i = 1; i <= segments; i++)
+                {
+                    var t = i / (double)segments; var ease = t * t * (3 - 2 * t);
+                    var x = (int)Math.Round(start.X + (point.X-start.X)*ease);
+                    var y = (int)Math.Round(start.Y + (point.Y-start.Y)*ease);
+                    Batch(() => InputNative.Move(x, y), changesApplication: false);
+                    CursorChanged?.Invoke(x, y, "moving", supervisor.Epoch);
+                    if (i < segments) await Task.Delay(16, cancellation);
+                }
                 // Hover can replace a control inside the same root window. Hit testing alone cannot detect that.
                 await Task.Delay(80, cancellation);
                 var afterHover = await capture.CaptureAsync(source, frame.PrivacyMasks, cancellation);
                 if (afterHover.Geometry != frame.Geometry || afterHover.PixelDigest != frame.PixelDigest)
                     throw new SafetyException("Hover changed the screen; reobserve before another approval");
                 if (!tracker.IsPointVisible(source, point.X, point.Y)) throw new SafetyException("Hover changed the action target");
+                CursorChanged?.Invoke(point.X, point.Y, action.Kind, supervisor.Epoch);
                 if (action.Kind == "click")
                 {
                     Batch(() => { lock (heldGate) { heldButton = true; InputNative.Send(InputNative.Mouse(2), InputNative.Mouse(4)); heldButton = false; } });
                 }
                 else Batch(() => InputNative.Send(InputNative.Mouse(0x800, data: unchecked((uint)(action.Ticks!.Value * 120)))));
+                await Task.Delay(ReducedMotion ? 0 : 180, cancellation);
             }
             else if (action.Kind == "type")
             {
@@ -231,6 +247,7 @@ public sealed class WindowsInputExecutor(PermissionSupervisor supervisor, IWindo
         catch (SafetyException) { return new(proposal.Id, "not_dispatched", supervisor.Epoch); }
         finally
         {
+            CursorHidden?.Invoke(inputEpoch);
             ReleaseHeldControls(); activity.IsAssistantInputActive = false; serialized.Release();
         }
     }

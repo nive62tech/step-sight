@@ -11,7 +11,7 @@ public sealed class GuidanceApiClient(PublicConfiguration config, ILoginSession 
     // Must exceed CloudFront's 60s origin timeout and the API's 35s total provider budget.
     private readonly HttpClient http = transport ?? new() { BaseAddress = new Uri(config.ApiOrigin), Timeout = TimeSpan.FromSeconds(65) };
     private sealed class LostTurnResponse : Exception;
-    private async Task<HttpResponseMessage> Send(HttpRequestMessage request, CancellationToken cancellation, bool recoverTurn = false)
+    private async Task<HttpResponseMessage> Send(HttpRequestMessage request, CancellationToken cancellation, bool recoverTurn = false, bool recoveringResult = false)
     {
         var token = await login.GetAccessAsync(cancellation);
         if (token is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -19,8 +19,12 @@ public sealed class GuidanceApiClient(PublicConfiguration config, ILoginSession 
         if (!response.IsSuccessStatusCode)
         {
             var status = response.StatusCode; response.Dispose();
+            if (recoveringResult && status == System.Net.HttpStatusCode.NotFound)
+                throw new TransientGuidanceException("The interrupted image upload never reached the service. Reconnecting for a fresh image.");
             if (recoverTurn && status is System.Net.HttpStatusCode.BadGateway or System.Net.HttpStatusCode.GatewayTimeout or System.Net.HttpStatusCode.ServiceUnavailable)
                 throw new LostTurnResponse();
+            if (status is System.Net.HttpStatusCode.Conflict or System.Net.HttpStatusCode.BadGateway or System.Net.HttpStatusCode.GatewayTimeout or System.Net.HttpStatusCode.ServiceUnavailable)
+                throw new TransientGuidanceException("The analysis connection or session needs another attempt.");
             throw new SafetyException(status switch
             {
                 System.Net.HttpStatusCode.Conflict => "Session or target changed. Pause and resume to reobserve.",
@@ -101,7 +105,7 @@ public sealed class GuidanceApiClient(PublicConfiguration config, ILoginSession 
             {
                 deadline.Token.ThrowIfCancellationRequested();
                 using var request = new HttpRequestMessage(HttpMethod.Get, $"/v1/sessions/{session}/turns/{requestId}");
-                using var response = await Send(request, deadline.Token);
+                using var response = await Send(request, deadline.Token, recoveringResult: true);
                 if (response.StatusCode == System.Net.HttpStatusCode.OK)
                     return WireJson.Read<TurnResponse>(await ReadBounded(response, deadline.Token));
                 if (response.StatusCode != System.Net.HttpStatusCode.Accepted) break;
@@ -109,8 +113,8 @@ public sealed class GuidanceApiClient(PublicConfiguration config, ILoginSession 
             }
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
-        catch (Exception ex) when (ex is OperationCanceledException or HttpRequestException or SafetyException) { }
-        throw new SafetyException("The analysis result could not be recovered. Pause and resume to synchronize, then check the screen again.");
+        catch (Exception ex) when (ex is OperationCanceledException or HttpRequestException or TransientGuidanceException) { }
+        throw new TransientGuidanceException("The analysis result could not be recovered. Synchronizing before another fresh image.");
     }
     public async Task<QuestionResponse> QuestionAsync(Guid session, int version, string text, CancellationToken cancellation)
     {

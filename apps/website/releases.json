@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "latest": "2026.10.11-pilot-r13",
+  "latest": "2026.10.11-pilot-r17",
   "releases": [
     {
       "id": "2026.10.11-pilot",
@@ -24,7 +24,19 @@
       "url": "/downloads/2026.10.11-pilot-r13/DesktopGuide-windows-x64-pilot-r13.zip",
       "sha256": "d5fcace83287d657fade82399192b39df85ae345bf2c49c0768e56173ae11514",
       "bytes": 120032437,
-      "notes": "Latest pilot: describe a goal to let Gemini choose a browser and starting site, or use Ctrl+Alt+Space for an existing window. Live screenshot guidance now uses a compact companion, drawn cursor/ring/callout, Find click target, Check screen, loading-state handling and interrupted-response recovery. Screenshot-only guidance; offline walkthroughs and browser control inspection are disabled. You click and type; autonomous execution is not included. Requires an invited pilot account and internet. Unsigned; full native workflows, voice and accessibility remain under qualification."
+      "notes": "This archived pilot: describe a goal to let Gemini choose a browser and starting site, or use Ctrl+Alt+Space for an existing window. Live screenshot guidance now uses a compact companion, drawn cursor/ring/callout, Find click target, Check screen, loading-state handling and interrupted-response recovery. Screenshot-only guidance; offline walkthroughs and browser control inspection are disabled. You click and type; autonomous execution is not included. Requires an invited pilot account and internet. Unsigned; full native workflows, voice and accessibility remain under qualification."
+    },
+    {
+      "id": "2026.10.11-pilot-r17",
+      "version": "2026.10.11 pilot r17",
+      "date": "2026-10-11",
+      "channel": "development",
+      "platform": "Windows 11 x64",
+      "signed": false,
+      "url": "/downloads/2026.10.11-pilot-r17/DesktopGuide-windows-x64-pilot-r17.zip",
+      "sha256": "b26c532da5a95e934244fa6811f567747cf026fa03346471a935c9f8910c1643",
+      "bytes": 120078973,
+      "notes": "Guided and Autonomous modes, green/red animated companion, voice prompts and locally enabled phone control. Up to three retries for temporary analysis failures, fresh-screen Resume in the original mode, immediate local Stop, visible thinking/retry progress and an animated controlled cursor with click rings. Live screenshot decisions only. Real Windows test against the deployed Gemini service passed retry, pause/resume, verified click and Stop during cursor movement. Requires an invited pilot account and internet. Unsigned development build; full IRCTC and broader real-site workflows remain under qualification."
     }
   ]
 }

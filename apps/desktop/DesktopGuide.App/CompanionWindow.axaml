@@ -16,7 +16,7 @@
   <Grid>
     <StackPanel x:Name="BlobLauncher" Spacing="0" VerticalAlignment="Center">
       <Button x:Name="BlobVoiceButton" Classes="blob" Padding="0" Background="Transparent" BorderBrush="Transparent" HorizontalAlignment="Center" ToolTip.Tip="Click to record up to 30 seconds. Finish sends the clip to Gemini via AWS." AutomationProperties.Name="Start listening for a spoken task">
-        <local:AgentBlob Width="138" Height="130" Autonomous="{Binding IsAutonomous}" Listening="{Binding VoiceListening}" Busy="{Binding IsBusy}" ReducedMotion="{Binding ReducedMotion}" />
+        <local:AgentBlob Width="138" Height="130" Autonomous="{Binding IsAutonomous}" Listening="{Binding VoiceListening}" Busy="{Binding IsThinking}" ReducedMotion="{Binding ReducedMotion}" />
       </Button>
       <Border Background="{DynamicResource ModeSurface}" BorderBrush="{DynamicResource ModeBorder}" BorderThickness="1" CornerRadius="14" Padding="10,5" HorizontalAlignment="Center">
         <StackPanel Orientation="Horizontal" Spacing="4">
@@ -30,7 +30,7 @@
       <Grid ColumnDefinitions="*,Auto" Margin="6,0">
         <Button x:Name="ToggleButton" Classes="quiet" Padding="10,4" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" AutomationProperties.Name="Open or collapse Desktop Guide">
           <StackPanel Orientation="Horizontal" Spacing="11">
-            <local:AgentBlob Width="38" Height="40" Autonomous="{Binding IsAutonomous}" Listening="{Binding VoiceListening}" Busy="{Binding IsBusy}" ReducedMotion="{Binding ReducedMotion}" />
+            <local:AgentBlob Width="38" Height="40" Autonomous="{Binding IsAutonomous}" Listening="{Binding VoiceListening}" Busy="{Binding IsThinking}" ReducedMotion="{Binding ReducedMotion}" />
             <StackPanel VerticalAlignment="Center" Spacing="2">
               <TextBlock Text="Desktop Guide" FontWeight="SemiBold" FontSize="13" />
               <TextBlock Text="{Binding CompanionStatus}" FontSize="11" Classes="muted" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" MaxWidth="210" />
@@ -42,6 +42,7 @@
       <ScrollViewer x:Name="CompactBody" Grid.Row="1" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Margin="20,0,20,16" Spacing="10">
           <Border Height="1" Background="{DynamicResource ModeBorder}" />
+          <ProgressBar IsVisible="{Binding IsThinking}" IsIndeterminate="{Binding !ReducedMotion}" Value="55" Height="3" Foreground="{DynamicResource ModeAccent}" />
           <TextBlock Text="{Binding CompactInstruction}" FontSize="18" FontFamily="Georgia" LineHeight="24" />
           <TextBlock Text="{Binding MarkerStatus}" FontSize="12" Classes="accent" IsVisible="{Binding HasLesson}" />
           <Border Classes="notice" Padding="10" IsVisible="{Binding HasNotice}"><TextBlock Text="{Binding Notice}" FontSize="12" /></Border>
@@ -76,6 +77,7 @@
             <Expander Header="Voice, privacy &amp; task limits" FontSize="11"><StackPanel Spacing="6"><TextBlock Text="Voice clips go to Gemini via AWS for transcription. Review the text before starting." Classes="muted" FontSize="11" /><TextBlock Text="{Binding TaskDisclosure}" Classes="muted" FontSize="11" LineHeight="16" /></StackPanel></Expander>
           </StackPanel>
           <StackPanel IsVisible="{Binding HasLesson}" Spacing="12">
+            <ProgressBar IsVisible="{Binding IsThinking}" IsIndeterminate="{Binding !ReducedMotion}" Value="55" Height="3" />
             <TextBlock Text="{Binding Status}" Classes="accent" FontSize="12" FontWeight="SemiBold" />
             <TextBlock Text="{Binding Instruction}" FontFamily="Georgia" FontSize="23" LineHeight="29" />
             <TextBlock Text="{Binding Explanation}" Classes="muted" FontSize="13" LineHeight="19" />

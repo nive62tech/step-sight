@@ -59,7 +59,7 @@ public sealed class GuidanceMarker : Canvas
     {
         anchorX = x; anchorY = y;
         bubble.IsVisible = showCallout;
-        action.Text = expectedAction switch { "click" => "Click here", "type" => "Type here", "scroll" => "Scroll here", "key_chord" => "Use your keyboard", _ => "Look here" };
+        action.Text = expectedAction switch { "agent_click" => "Agent clicking", "agent_scroll" => "Agent scrolling", "agent_type" => "Agent typing", "click" => "Click here", "type" => "Type here", "scroll" => "Scroll here", "key_chord" => "Use your keyboard", _ => "Look here" };
         comment.Text = instruction.Length > 180 ? instruction[..177] + "…" : instruction;
         SetLeft(ripple, x - 24); SetTop(ripple, y - 24);
         SetLeft(ring, x - 19); SetTop(ring, y - 19);

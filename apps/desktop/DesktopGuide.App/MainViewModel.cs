@@ -98,6 +98,9 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private int setupStep;
     [ObservableProperty] private bool isSigningIn;
     [ObservableProperty] private bool isBusy;
+    [ObservableProperty] private int retryAttempt;
+    public bool IsThinking => !IsPaused && (LessonState is LessonState.Observing or LessonState.Planning or LessonState.Verifying or LessonState.AnsweringQuestion || RetryAttempt > 0 || IsBusy && !HasLesson);
+    public string ThinkingLabel => RetryAttempt > 0 ? $"Rechecking live screen · retry {RetryAttempt}/3" : LessonState == LessonState.Verifying ? "Checking the result…" : "Analysing the live screen…";
     [ObservableProperty] private bool isServiceReady;
     [ObservableProperty] private string connectionStatus = "Sign in to connect your lessons.";
     [ObservableProperty] private bool resumeConsent;
@@ -124,7 +127,7 @@ public sealed partial class MainViewModel : ObservableObject
     public string PreparedWindowLabel => PreparedWindow?.Label ?? "Use Ctrl + Alt + Space from the app you want help with.";
     public string CompanionHotkeyStatus => activity is ICompanionHotkey { CompanionHotkeyRegistered: true }
         ? "Summon your guide · Ctrl + Alt + Space" : "Shortcut unavailable · use this companion or the tray.";
-    public string CompanionStatus => IsBusy && !HasLesson ? "Preparing your guide…" : HasLesson ? Status : "Ask. See. Do.";
+    public string CompanionStatus => IsThinking ? ThinkingLabel : HasLesson || LessonState == LessonState.Stopped ? Status : "Ask. See. Do.";
 
     public bool SignedIn => login.SignedIn;
     public bool NeedsSignIn => !login.IsMock && !SignedIn;
@@ -191,11 +194,13 @@ public sealed partial class MainViewModel : ObservableObject
             if (state == LessonState.Consent) ignoreStartReset = false;
             ui(() =>
             {
+                if (state != controller.State) return; // Ignore queued state from a cancelled operation.
                 LessonState = state; Status = StatusText(state);
                 if (state is LessonState.Stopped or LessonState.Paused or LessonState.PrivacyPaused or LessonState.NetworkInterrupted) { Recording = false; ResumeConsent = false; }
                 if (state == LessonState.Stopped && !internalReset) { taskCancellation?.Cancel(); ClearConsent(); }
             });
         };
+        controller.RetryChanged += attempt => ui(() => { RetryAttempt = controller.RetryAttempt; RefreshUi(); });
         controller.ProposalChanged += proposal => ui(() => { CurrentProposal = proposal; ProposalSummary = proposal is null ? "" : $"{proposal.Action.Kind}: {proposal.Effect}"; });
         controller.TimingsRecorded += timings => ui(() => ResponseTiming = $"Screen: {timings["capture_preprocess"]:F0} ms · Guidance: {timings["roundtrip"] / 1000:F1} s");
     }
@@ -206,7 +211,7 @@ public sealed partial class MainViewModel : ObservableObject
             nameof(ShowSetup), nameof(ShowLesson), nameof(ShowSettings), nameof(ShowTask), nameof(ShowWindow), nameof(ShowReview), nameof(PageTitle), nameof(PageDescription), nameof(SetupProgress),
             nameof(CanPreview), nameof(CanStart), nameof(StartHint), nameof(HasNotice), nameof(SourceSummary), nameof(LessonTitle), nameof(ModeHelp), nameof(HasLesson),
             nameof(IsPaused), nameof(CanInteract), nameof(CanPoint), nameof(ObservationSummary), nameof(IsRailwayLesson), nameof(ShowDemoPermission), nameof(ShowPointerPermission), nameof(HasProposal), nameof(HotkeyStatus), nameof(CompanionStatus), nameof(CanFindTarget), nameof(HasCompactCard), nameof(CompactInstruction),
-            nameof(IsAutonomous), nameof(CanChooseMode), nameof(TaskModeDescription), nameof(TaskDisclosure), nameof(ResumeConsentLabel), nameof(CurrentWindowLabel), nameof(ModeLabel), nameof(AutonomousModeSelected), nameof(CanSubmitTask), nameof(VoiceButtonLabel) }) OnPropertyChanged(name);
+            nameof(IsAutonomous), nameof(CanChooseMode), nameof(TaskModeDescription), nameof(TaskDisclosure), nameof(ResumeConsentLabel), nameof(CurrentWindowLabel), nameof(ModeLabel), nameof(AutonomousModeSelected), nameof(CanSubmitTask), nameof(VoiceButtonLabel), nameof(IsThinking), nameof(ThinkingLabel) }) OnPropertyChanged(name);
     }
     private string StatusText(LessonState state) => state switch
     {
@@ -300,12 +305,12 @@ public sealed partial class MainViewModel : ObservableObject
         var operation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         currentOperation = operation; IsBusy = true; Notice = "";
         try { await action(); }
-        catch (OperationCanceledException) { Notice = "Cancelled. You can try again when you're ready."; }
-        catch (SignInException ex) { Notice = ex.Message; }
-        catch (SafetyException ex) { Notice = ex.Message; }
-        catch (HttpRequestException) { Notice = "Couldn't reach the service. Check your connection, then retry."; }
-        catch (Exception ex) when (ex is not OutOfMemoryException) { Notice = "This step couldn't be completed. Check your selected window and permissions, then try again."; }
-        finally { IsBusy = false; currentOperation = null; operation.TrySetResult(); RefreshUi(); }
+        catch (OperationCanceledException) { if (currentOperation == operation) Notice = "Cancelled. You can try again when you're ready."; }
+        catch (SignInException ex) { if (currentOperation == operation) Notice = ex.Message; }
+        catch (SafetyException ex) { if (currentOperation == operation) Notice = ex.Message; }
+        catch (HttpRequestException) { if (currentOperation == operation) Notice = "Couldn't reach the service. Check your connection, then retry."; }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { if (currentOperation == operation) Notice = "This step couldn't be completed. Check your selected window and permissions, then try again."; }
+        finally { if (currentOperation == operation) { IsBusy = false; currentOperation = null; RefreshUi(); } operation.TrySetResult(); }
     }
     [RelayCommand] private void DismissNotice() => Notice = "";
     [RelayCommand] private void RefreshSources()
@@ -315,7 +320,7 @@ public sealed partial class MainViewModel : ObservableObject
         try { foreach (var source in controller.Sources()) Sources.Add(source); SelectedSource = Sources.FirstOrDefault(s => s.TargetId == selected); }
         catch (Exception ex) when (ex is not OutOfMemoryException) { Notice = "Windows couldn't list your open apps. Open the app you want help with, then refresh."; }
     }
-    [RelayCommand] private Task ContinueSetup() => Run(async () =>
+    [RelayCommand(AllowConcurrentExecutions = true)] private Task ContinueSetup() => Run(async () =>
     {
         if (VoiceListening || VoiceTranscribing) throw new SafetyException("Finish or cancel voice input before starting.");
         var prompt = Goal;
@@ -326,7 +331,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (IsMock) throw new SafetyException("Live guidance needs the connected cloud build. No offline walkthrough is available.");
         if (browserLauncher is null) throw new SafetyException("Browser launch is unavailable in this build.");
         if (browserPlanner is null) throw new SafetyException("Live intent planning is unavailable in this build.");
-        StopTask();
+        StopTask(false);
         using var task = new CancellationTokenSource(); taskCancellation = task;
         try
         {
@@ -352,11 +357,11 @@ public sealed partial class MainViewModel : ObservableObject
             ignoreStartReset = true;
             await controller.StartAsync(launched, prompt, plan.LessonId, autonomous ? InteractionMode.Autonomous : InteractionMode.Guide, false, false, SaveProgress, autonomous);
         }
-        catch { controller.StopLocal(); ClearConsent(); throw; }
-        finally { ignoreStartReset = false; if (taskCancellation == task) taskCancellation = null; }
+        catch { if (taskCancellation == task) { controller.StopLocal(); ClearConsent(); } throw; }
+        finally { if (taskCancellation == task) { ignoreStartReset = false; taskCancellation = null; } }
     });
     [RelayCommand] private void ChooseExistingWindow() { Stop(); RefreshSources(); SelectedLesson = "browser"; SetupStep = 1; ActiveView = "setup"; }
-    [RelayCommand] private Task HelpCurrentWindow() => Run(async () =>
+    [RelayCommand(AllowConcurrentExecutions = true)] private Task HelpCurrentWindow() => Run(async () =>
     {
         if (VoiceListening || VoiceTranscribing) throw new SafetyException("Finish or cancel voice input before starting.");
         var selected = PreparedWindow ?? throw new SafetyException("Press Ctrl + Alt + Space while your task window is in front.");
@@ -365,7 +370,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (autonomous && !AutonomousConsent) throw new SafetyException("Allow autonomous control for this task before starting.");
         if (string.IsNullOrWhiteSpace(prompt)) throw new SafetyException("Describe what you want to do in this window.");
         if (IsMock) throw new SafetyException("Live screen help needs the connected cloud build.");
-        StopTask(); using var task = new CancellationTokenSource(); taskCancellation = task;
+        StopTask(false); using var task = new CancellationTokenSource(); taskCancellation = task;
         try
         {
             if (!SignedIn)
@@ -381,8 +386,8 @@ public sealed partial class MainViewModel : ObservableObject
             GuideStarting?.Invoke(selected);
             await controller.StartAsync(selected, prompt, "browser", autonomous ? InteractionMode.Autonomous : InteractionMode.Guide, false, false, SaveProgress, autonomous);
         }
-        catch { controller.StopLocal(); ClearConsent(); throw; }
-        finally { ignoreStartReset = false; if (taskCancellation == task) taskCancellation = null; }
+        catch { if (taskCancellation == task) { controller.StopLocal(); ClearConsent(); } throw; }
+        finally { if (taskCancellation == task) { ignoreStartReset = false; taskCancellation = null; } }
     });
     [RelayCommand] private void BackSetup() { if (SetupStep > 0) SetupStep--; }
     [RelayCommand] private void NewLesson() { Stop(); SetupStep = 0; ActiveView = "setup"; Notice = ""; RefreshSources(); }
@@ -411,7 +416,14 @@ public sealed partial class MainViewModel : ObservableObject
         try { await controller.StartAsync(SelectedSource, Goal, SelectedLesson, (InteractionMode)SelectedMode, PointerConsent, DemonstrationConsent, SaveProgress, AutonomousConsent); }
         finally { ignoreStartReset = false; }
     });
-    private void StopTask() { CancelVoicePrompt(); taskCancellation?.Cancel(); signInCancellation?.Cancel(); controller.StopLocal(); ClearConsent(); Status = "Stopped · permissions cleared"; }
+    private void StopTask(bool releaseOperation = true)
+    {
+        CancelVoicePrompt(); taskCancellation?.Cancel(); taskCancellation = null; signInCancellation?.Cancel();
+        ignoreStartReset = !releaseOperation;
+        controller.StopLocal(); ClearConsent(); ignoreStartReset = false;
+        if (releaseOperation) { var old = currentOperation; currentOperation = null; IsBusy = false; old?.TrySetResult(); }
+        Notice = ""; Status = "Stopped · permissions cleared"; RefreshUi();
+    }
     [RelayCommand] private void Stop() { DisablePhoneControl(); StopTask(); }
     [RelayCommand] private void Pause() => controller.PauseLocal();
     [RelayCommand(AllowConcurrentExecutions = true)] private Task Resume() => Run(async () =>
