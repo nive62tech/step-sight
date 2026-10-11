@@ -154,6 +154,7 @@ public sealed class WindowsPointer(PermissionSupervisor supervisor, IWindowTrack
 public sealed class WindowsInputExecutor(PermissionSupervisor supervisor, IWindowTracker tracker,
     IUserActivityObserver activity, IScreenCapture capture) : IInputExecutor
 {
+    public string? LastDeferralReason { get; private set; }
     public bool ReducedMotion { get; set; }
     public event Action<int, int, string, long>? CursorChanged;
     public event Action<long>? CursorHidden;
@@ -168,6 +169,7 @@ public sealed class WindowsInputExecutor(PermissionSupervisor supervisor, IWindo
         var inputEpoch = supervisor.Epoch;
         await serialized.WaitAsync(cancellation);
         bool dispatched = false;
+        LastDeferralReason = null;
         try
         {
             cancellation.ThrowIfCancellationRequested();
@@ -205,7 +207,7 @@ public sealed class WindowsInputExecutor(PermissionSupervisor supervisor, IWindo
                 // Hover can replace a control inside the same root window. Hit testing alone cannot detect that.
                 await Task.Delay(80, cancellation);
                 var afterHover = await capture.CaptureAsync(source, frame.PrivacyMasks, cancellation);
-                if (afterHover.Geometry != frame.Geometry || afterHover.PixelDigest != frame.PixelDigest)
+                if (!tracker.IsActionTargetCurrent(frame, afterHover, action))
                     throw new SafetyException("Hover changed the screen; reobserve before another approval");
                 if (!tracker.IsPointVisible(source, point.X, point.Y)) throw new SafetyException("Hover changed the action target");
                 CursorChanged?.Invoke(point.X, point.Y, action.Kind, supervisor.Epoch);
@@ -244,7 +246,7 @@ public sealed class WindowsInputExecutor(PermissionSupervisor supervisor, IWindo
         }
         catch (OperationCanceledException) { return new(proposal.Id, dispatched ? "unknown" : "not_dispatched", supervisor.Epoch); }
         catch (SafetyException) when (dispatched) { return new(proposal.Id, "unknown", supervisor.Epoch); }
-        catch (SafetyException) { return new(proposal.Id, "not_dispatched", supervisor.Epoch); }
+        catch (SafetyException ex) { LastDeferralReason = ex.Message; return new(proposal.Id, "not_dispatched", supervisor.Epoch); }
         finally
         {
             CursorHidden?.Invoke(inputEpoch);

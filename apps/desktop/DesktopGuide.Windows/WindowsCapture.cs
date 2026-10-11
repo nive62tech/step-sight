@@ -190,6 +190,28 @@ public sealed class WindowsCapture : IScreenCapture, IWindowTracker
         return true;
     }
 
+    public bool IsActionTargetCurrent(ScreenFrame before, ScreenFrame after, InputAction action)
+    {
+        // Keyboard input still needs the entire approved image. For mouse actions, tolerate
+        // unrelated clock/caret noise only: the target neighbourhood remains pixel-checked,
+        // and meaningful global layout changes, geometry, masks and focus still fail closed.
+        if (before.Geometry != after.Geometry || !before.PrivacyMasks.SequenceEqual(after.PrivacyMasks)) return false;
+        if (before.PixelDigest == after.PixelDigest) return true;
+        if (action.Kind is not ("click" or "scroll") || action.X is null || action.Y is null || HasMeaningfulChange(before, after)) return false;
+        using var original = new Bitmap(new MemoryStream(before.Png));
+        using var current = new Bitmap(new MemoryStream(after.Png));
+        if (original.Size != current.Size) return false;
+        var cx = (int)Math.Round(action.X.Value * (original.Width-1));
+        var cy = (int)Math.Round(action.Y.Value * (original.Height-1));
+        for (var y = Math.Max(0,cy-40); y < Math.Min(original.Height,cy+41); y++)
+            for (var x = Math.Max(0,cx-80); x < Math.Min(original.Width,cx+81); x++)
+            {
+                var a = original.GetPixel(x,y); var b = current.GetPixel(x,y);
+                if (Math.Abs(a.R-b.R)+Math.Abs(a.G-b.G)+Math.Abs(a.B-b.B)>18) return false;
+            }
+        return true;
+    }
+
     public async Task<ScreenFrame> CaptureAsync(CaptureSource source, IReadOnlyList<Bounds> masks, CancellationToken cancellation)
     {
         await captureGate.WaitAsync(cancellation);

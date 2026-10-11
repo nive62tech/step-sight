@@ -180,16 +180,15 @@ public sealed class LessonController : IDisposable
                 Notice?.Invoke("");
                 var fresh = await capture.CaptureAsync(source, Masks, token);
                 if (epoch != Permissions.Epoch) return;
-                if (fresh.Geometry != frame.Geometry || fresh.PixelDigest != frame.PixelDigest)
+                if (!tracker.IsActionTargetCurrent(frame, fresh, action.Action))
                 {
                     if (++blockedAttempts > MaximumRecoveryAttempts) throw new SafetyException("The screen kept changing after 3 retries. Paused before clicking; Resume will read a fresh image.");
                     Notice?.Invoke($"Screen changed · refreshing target {blockedAttempts}/{MaximumRecoveryAttempts}...");
-                    await ObserveTurnAsync("reobserve"); continue;
+                    await ObserveTurnAsync("recover"); continue;
                 }
                 var key = (frame.PixelDigest, action.Action);
                 var attempts = repeated.GetValueOrDefault(key);
                 if (attempts >= 2) throw new SafetyException("The same action has not changed the screen. Control is paused for your review.");
-                repeated[key] = attempts + 1;
                 var capability = Permissions.ApproveAutonomousAction(action, frame);
                 machine.Transition(LessonState.Acting);
                 Presentation?.Invoke(previous.Instruction, "Autonomous mode · performing one action, then checking its result.", "Agent acting");
@@ -206,9 +205,11 @@ public sealed class LessonController : IDisposable
                 }
                 if (receipt.Outcome == "not_dispatched")
                 {
-                    if (++blockedAttempts > MaximumRecoveryAttempts) throw new SafetyException("Input could not reach the target after 3 fresh checks. Paused; Resume will analyse the current screen.");
-                    machine.Transition(LessonState.Observing); await ObserveTurnAsync("reobserve"); continue;
+                    if (++blockedAttempts > MaximumRecoveryAttempts) throw new SafetyException("Input could not reach the target after 3 fresh checks. " + executor.LastDeferralReason + " Resume will analyse the current screen.");
+                    Notice?.Invoke($"Click not sent · rechecking the hovered target ({blockedAttempts}/{MaximumRecoveryAttempts}).");
+                    machine.Transition(LessonState.Observing); await ObserveTurnAsync("recover"); continue;
                 }
+                repeated[key] = attempts + 1;
                 blockedAttempts = 0; recoveryAttempts = 0;
                 machine.Transition(LessonState.Verifying);
                 await Task.Delay(650, token);

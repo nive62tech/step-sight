@@ -6,6 +6,14 @@ namespace DesktopGuide.Tests;
 
 public sealed class ControllerTests
 {
+    [Fact] public async Task UndispatchedClicksRecoverWithoutRequestingManualCompletionOrCountingAsRepeatedActions()
+    {
+        var env = new Environment { DeferInputs = 3, CompleteAfter = 1 }; using var c = env.Controller();
+        await c.PreviewAsync(env.Source);
+        await c.StartAsync(env.Source,"Create a meeting link","browser",InteractionMode.Autonomous,false,false,false,true);
+        Assert.Equal(new[] {"start","recover","recover","recover","autonomous_result"},env.Events);
+        Assert.Equal(1,env.Dispatches); Assert.Equal(LessonState.Completed,c.State);
+    }
     [Fact]
     public async Task TransientAnalysisRetriesFreshImagesAndReceiptFailureNeverReplaysInput()
     {
@@ -161,6 +169,7 @@ public sealed class ControllerTests
         public string Verify = "CONFIRMED";
         public bool BlockTurn;
         public int CompleteAfter;
+        public int DeferInputs;
         public bool ManualStep, InvalidEvidence, ChangeBeforeDispatch;
         public bool BannerRecovery, FreshResume;
         public List<string> DispatchedKinds = [];
@@ -226,6 +235,7 @@ public sealed class ControllerTests
         public Task<ActionReceipt> ExecuteAsync(LocalCapability capability, ActionProposal proposal, ScreenFrame frame, CaptureSource source, CancellationToken cancellation)
         {
             var lease = Permissions.Consume(capability, proposal, frame, true);
+            if (DeferInputs-- > 0) return Task.FromResult(new ActionReceipt(proposal.Id,"not_dispatched",Permissions.Epoch));
             Permissions.ExecuteBatch(lease, frame, true, () => { Dispatches++; DispatchedKinds.Add(proposal.Action.Kind); });
             return Task.FromResult(new ActionReceipt(proposal.Id, Outcome, Permissions.Epoch));
         }

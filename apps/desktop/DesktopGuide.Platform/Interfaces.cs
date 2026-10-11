@@ -23,6 +23,8 @@ public interface IWindowTracker
     bool HasMeaningfulChange(ScreenFrame before, ScreenFrame after);
     bool IsGuidanceTargetCurrent(ScreenFrame before, ScreenFrame after, Target target)
         => before.Geometry == after.Geometry && before.PixelDigest == after.PixelDigest;
+    bool IsActionTargetCurrent(ScreenFrame before, ScreenFrame after, InputAction action)
+        => before.Geometry == after.Geometry && before.PixelDigest == after.PixelDigest;
 }
 public interface IUserActivityObserver : IDisposable
 {
@@ -47,6 +49,7 @@ public interface IPointerGuide
 }
 public interface IInputExecutor
 {
+    string? LastDeferralReason => null;
     Task<ActionReceipt> ExecuteAsync(LocalCapability capability, ActionProposal proposal, ScreenFrame frame,
         CaptureSource source, CancellationToken cancellation);
     void ReleaseHeldControls();

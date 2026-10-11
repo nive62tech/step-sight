@@ -44,6 +44,7 @@ internal static class LiveRecovery
     }
     public static int Run()
     {
+        var meeting = Environment.GetCommandLineArgs().Contains("--meeting-creation");
         // Access token arrives on a redirected pipe, never arguments, environment, or disk.
         using var setup = JsonDocument.Parse(Console.ReadLine() ?? throw new InvalidOperationException("Missing piped test configuration"));
         var config = PublicConfiguration.Load(setup.RootElement.GetProperty("config").GetString());
@@ -56,7 +57,17 @@ internal static class LiveRecovery
         var button = new Button { Text = "Finish practice", Left = 200, Top = 220, Width = 340, Height = 85, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(25, 130, 75), ForeColor = Color.White, Font = new Font("Segoe UI", 19), TabStop = false };
         button.FlatAppearance.BorderSize = 0; button.FlatAppearance.MouseOverBackColor = button.BackColor; button.FlatAppearance.MouseDownBackColor = button.BackColor;
         form.Controls.Add(label); form.Controls.Add(button); int clicks = 0, exit = 1;
-        button.Click += (_, _) => { clicks++; label.Text = "Practice finished successfully"; button.Visible = false; };
+        if (meeting) { label.Text = "Disposable meeting creation test"; button.Text = "New meeting"; }
+        button.Click += (_, _) =>
+        {
+            clicks++;
+            if (meeting && clicks == 1) { label.Text = "Choose how to create your meeting"; button.Text = "Create a meeting for later"; button.Font = new Font("Segoe UI",16); }
+            else { label.Text = meeting ? "Meeting link ready: meet.example.invalid/test-room" : "Practice finished successfully"; button.Visible = false; }
+        };
+        // A changing clock outside the click neighbourhood must not prevent stable targets.
+        var clockLabel = new Label { Left=650, Top=10, Width=80, Height=20 };
+        form.Controls.Add(clockLabel); var clock = new System.Windows.Forms.Timer { Interval = 300 }; var ticks = 0;
+        clock.Tick += (_, _) => clockLabel.Text = (++ticks).ToString(); if (meeting) clock.Start();
         var report = new Dictionary<string, object> { ["environment"] = "deployed AWS/Gemini + real Windows capture/input; disposable test form only" };
         form.Shown += async (_, _) =>
         {
@@ -68,18 +79,24 @@ internal static class LiveRecovery
             string notice = ""; controller.Notice += text => notice = text;
             bool paused = false, stoppingInput = false; int cursorFrames = 0;
             input.CursorChanged += (_, _, phase, _) => { cursorFrames++; if (stoppingInput && phase == "moving") controller.StopLocal(); };
-            controller.StateChanged += state => { if (state == LessonState.WaitingForLearner && !paused) { paused = true; controller.PauseLocal(); } };
+            controller.StateChanged += state => { if (!meeting && state == LessonState.WaitingForLearner && !paused) { paused = true; controller.PauseLocal(); } };
             try
             {
                 await Task.Delay(500); form.Activate(); await Task.Delay(200);
                 var source = capture.RegisterOwnTestWindow(form.Handle, form.Text);
                 await controller.PreviewAsync(source);
-                await controller.StartAsync(source, "Click Finish practice once and confirm that Practice finished successfully is visible.", "browser", InteractionMode.Autonomous, false, false, false, true);
-                if (!paused || clicks != 0 || controller.State != LessonState.Paused) throw new InvalidOperationException("Pause before dispatch failed");
-                report["pause_before_dispatch"] = true; report["automatic_transport_retry"] = retries.Contains(1);
-                await controller.ResumeAsync(true);
-                if (controller.State != LessonState.Completed || clicks != 1 || controller.Mode != InteractionMode.Autonomous) throw new InvalidOperationException("Live resume did not complete: " + controller.State);
-                report["live_model_resume_and_verified_click"] = true; report["autonomous_mode_preserved"] = true;
+                await controller.StartAsync(source, meeting ? "Create a meeting link for later using this disposable practice application. Finish when the meeting link is visible." : "Click Finish practice once and confirm that Practice finished successfully is visible.", "browser", InteractionMode.Autonomous, false, false, false, true);
+                if (!meeting)
+                {
+                    if (!paused || clicks != 0 || controller.State != LessonState.Paused) throw new InvalidOperationException("Pause before dispatch failed");
+                    report["pause_before_dispatch"] = true; report["automatic_transport_retry"] = retries.Contains(1);
+                    await controller.ResumeAsync(true);
+                }
+                if (controller.State != LessonState.Completed || clicks != (meeting ? 2 : 1) || controller.Mode != InteractionMode.Autonomous) throw new InvalidOperationException("Live task did not complete: " + controller.State);
+                report[meeting ? "meeting_creation_without_manual_handoff" : "live_model_resume_and_verified_click"] = true;
+                report["verified_clicks"] = clicks;
+                report["automatic_transport_retry"] = retries.Contains(1);
+                report["autonomous_mode_preserved"] = true;
                 report["controlled_cursor_animation_events"] = cursorFrames;
                 // Stop during the first movement batch of a second, synthetic local approval.
                 // This oracle is exclusively a safety test and is never given to the model.
@@ -90,12 +107,12 @@ internal static class LiveRecovery
                 var approval = permissions.ApproveAutonomousAction(action, frame); stoppingInput = true;
                 var timer = Stopwatch.StartNew();
                 var result = await input.ExecuteAsync(approval, action, frame, source, permissions.Cancellation); timer.Stop();
-                if (result.Outcome != "not_dispatched" || controller.State != LessonState.Stopped || clicks != 1 || capture.CaptureSessionActive) throw new InvalidOperationException("Stop during movement failed");
+                if (result.Outcome != "not_dispatched" || controller.State != LessonState.Stopped || clicks != (meeting ? 2 : 1) || capture.CaptureSessionActive) throw new InvalidOperationException("Stop during movement failed");
                 report["stop_during_real_movement_no_click"] = true; report["stop_test_ms"] = timer.Elapsed.TotalMilliseconds;
                 report["capture_released_on_stop"] = true; report["result"] = "passed"; exit = 0;
             }
             catch (Exception e) { report["state"] = controller.State.ToString(); report["local_notice"] = notice; controller.StopLocal(); report["result"] = "failed"; report["diagnostic"] = e.GetType().Name + ": " + e.Message; report["clicks"] = clicks; }
-            finally { input.ReleaseHeldControls(); report["model_turns"] = Math.Min(3, transport.ModelTurns); Console.WriteLine(JsonSerializer.Serialize(report)); form.Close(); }
+            finally { clock.Stop(); clock.Dispose(); input.ReleaseHeldControls(); report["model_turns"] = Math.Min(3, transport.ModelTurns); Console.WriteLine(JsonSerializer.Serialize(report)); form.Close(); }
         };
         Application.Run(form); return exit;
     }

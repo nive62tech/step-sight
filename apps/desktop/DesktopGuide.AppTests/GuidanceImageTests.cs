@@ -8,6 +8,18 @@ namespace DesktopGuide.AppTests;
 
 public sealed class GuidanceImageTests
 {
+    [Fact] public void ActionAllowsRemoteClockNoiseButRejectsTargetChangesOverlaysAndKeyboardDrift()
+    {
+        using var capture = new WindowsCapture();
+        var geometry = new Geometry(Guid.NewGuid(),Guid.NewGuid(),new(0,0,800,450),800,450,96,"fixture",Guid.NewGuid(),new(0,0,1,1),new(0,0,1,1));
+        var action = new InputAction("click",.6,.55,"left"); var original = Image(geometry);
+        var clockTick = Image(geometry,new(20,20,2,15));
+        Assert.True(capture.IsActionTargetCurrent(original,clockTick,action));
+        Assert.False(capture.IsActionTargetCurrent(original,Image(geometry,new(470,230,2,2)),action));
+        Assert.False(capture.IsActionTargetCurrent(original,Image(geometry,new(10,10,300,180)),action));
+        Assert.False(capture.IsActionTargetCurrent(original,Image(geometry with { Id=Guid.NewGuid() }),action));
+        Assert.False(capture.IsActionTargetCurrent(original,clockTick,new("key_chord",Chord:"Enter")));
+    }
     private static ScreenFrame Image(Geometry geometry, Rectangle? changed = null)
     {
         using var bitmap = new Bitmap(800, 450);

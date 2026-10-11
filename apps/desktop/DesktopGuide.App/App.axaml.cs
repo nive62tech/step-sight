@@ -24,6 +24,13 @@ public sealed partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            if (Program.Arguments.Contains("--input-overlay-check"))
+            {
+                if (!Program.Arguments.Contains("--allow-real-input") || !Program.Arguments.Contains("--disposable-session"))
+                    throw new InvalidOperationException("Input overlay check requires disposable-session and real-input consent.");
+                InputOverlayCheck.Start(desktop);
+                base.OnFrameworkInitializationCompleted(); return;
+            }
             var configIndex = Array.IndexOf(Program.Arguments, "--config");
             var config = PublicConfiguration.Load(configIndex >= 0 ? Program.Arguments[configIndex + 1] : null);
             var registrations = new ServiceCollection();
