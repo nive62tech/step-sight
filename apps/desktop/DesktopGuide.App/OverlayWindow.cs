@@ -89,7 +89,7 @@ public sealed class OverlayWindow : Window
     public OverlayWindow()
     {
         Width = 340; Height = 140; CanResize = false; ShowInTaskbar = false; Topmost = true;
-        WindowDecorations = WindowDecorations.None; Background = Brushes.Transparent; ShowActivated = false;
+        WindowDecorations = WindowDecorations.None; Background = Brushes.Transparent; ShowActivated = false; IsHitTestVisible = false;
         TransparencyLevelHint = [WindowTransparencyLevel.Transparent]; Content = marker;
         animation = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
         animation.Tick += (_, _) => { if (IsVisible) marker.Animate(clock.Elapsed.TotalSeconds, reducedMotion); };

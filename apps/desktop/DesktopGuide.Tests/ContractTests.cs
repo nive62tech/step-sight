@@ -8,6 +8,7 @@ public sealed class ContractTests
 {
     [Theory]
     [InlineData("TurnResponse")]
+    [InlineData("TurnRequest")]
     [InlineData("SessionView")]
     [InlineData("ActionProposal")]
     [InlineData("BrowserPlanRequest")]
@@ -19,6 +20,7 @@ public sealed class ContractTests
         object dto = name switch
         {
             "TurnResponse" => WireJson.Read<TurnResponse>(json),
+            "TurnRequest" => WireJson.Read<TurnRequest>(json),
             "SessionView" => WireJson.Read<SessionView>(json),
             "BrowserPlanRequest" => WireJson.Read<BrowserPlanRequest>(json),
             "BrowserPlanResponse" => WireJson.Read<BrowserPlanResponse>(json),

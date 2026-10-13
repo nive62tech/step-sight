@@ -4,370 +4,402 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#070a0c" />
-    <title>Desktop Guide — A little guidance. A lot more possible.</title>
+    <title>Desktop Guide — You know the goal. We help with the how.</title>
     <meta
       name="description"
-      content="Describe a task or summon Desktop Guide with Ctrl+Alt+Space. Get live screenshot guidance, a floating companion, and a visual cursor while you click and type. Download the latest Windows pilot."
+      content="Meet your AI companion for Windows. Get visual guidance or permission-based help with everyday tasks. Explore meeting, Tatkal booking and scheduling examples."
     />
     <meta
       property="og:title"
-      content="Desktop Guide — A little guidance. A lot more possible."
+      content="Desktop Guide — You know the goal. We help with the how."
     />
     <meta
       property="og:description"
-      content="Start with a prompt. Follow the visual guide. Explore Desktop Guide's latest Windows companion and download the development pilot."
+      content="From planning your day to creating a meeting: see how an AI screen companion helps with the next step. Explore the interactive product story."
     />
     <meta property="og:type" content="website" />
     <meta name="color-scheme" content="dark" />
     <link rel="icon" href="/assets/mark.svg" type="image/svg+xml" />
+    <link
+      rel="preload"
+      href="/assets/manrope.ttf"
+      as="font"
+      type="font/ttf"
+      crossorigin
+    />
     <link rel="stylesheet" href="/assets/styles.css" />
     <script type="module" src="/assets/main.js"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
     <header class="site-header wrap" id="top">
-      <a href="#top" class="brand" aria-label="Desktop Guide home"
+      <a href="#intro" class="brand" aria-label="Desktop Guide home"
         ><span class="brand-mark" aria-hidden="true"></span>Desktop Guide</a
       >
       <nav aria-label="Main navigation">
-        <a href="#how-it-works">How it works</a><a href="#features">Features</a
-        ><a href="#releases">Releases</a>
+        <a href="#why">Why it helps</a><a href="#examples">See it in action</a
+        ><a href="#how-it-works">How it works</a>
       </nav>
-      <a class="button button-small" href="#download"
-        >Download<span class="nav-long"> for Windows</span
-        ><span aria-hidden="true">↗</span></a
-      >
-    </header>
-
-    <main id="main">
-      <section class="hero wrap" aria-labelledby="hero-title">
-        <div class="hero-copy">
-          <h1 id="hero-title">
-            A little guidance.<br /><span
-              >A lot more<br class="desktop-break" />
-              possible.</span
-            >
-          </h1>
-          <p class="lead">
-            Describe what you want to do. Desktop Guide opens a browser, reads
-            your task window, and helps with the next step. Follow the green
-            guide, or choose the red autonomous agent to click, scroll and type.
-          </p>
-          <div class="hero-actions">
-            <a class="button" href="#download"
-              >Download for Windows <span aria-hidden="true">↓</span></a
-            ><a class="text-link" href="#how-it-works"
-              >Explore the demo <span aria-hidden="true">↗</span></a
-            >
-          </div>
-          <p class="micro">Windows 11 · x64 · Development preview</p>
-        </div>
-        <div
-          class="hero-stage"
-          aria-label="Illustrative 3D preview of the floating companion guiding a browser task"
+      <div class="header-actions">
+        <button
+          class="button button-outline button-small"
+          id="present-toggle"
+          type="button"
+          aria-pressed="false"
+          hidden
         >
-          <div class="stage-glow"></div>
-          <div class="floor-grid"></div>
-          <div class="scene" id="scene">
-            <div class="editor-window">
-              <div class="window-bar">
-                <span
-                  ><span class="notepad-icon" aria-hidden="true">◎</span>
-                  Journey planner — example browser</span
-                ><span class="window-actions" aria-hidden="true"
-                  >− &nbsp; □ &nbsp; ×</span
-                >
-              </div>
-              <div class="editor-menu">
-                <span aria-hidden="true">← &nbsp; → &nbsp; ↻</span>
-                <span>Journey planner · Illustration</span>
-              </div>
-              <div class="editor-body">
-                <div class="hero-journey">
-                  <span class="hero-journey-label">YOUR NEXT JOURNEY</span>
-                  <h3>Where to next?</h3>
-                  <div class="hero-route">
-                    <span>New Delhi<small>FROM</small></span
-                    ><span aria-hidden="true">→</span
-                    ><span>Jaipur<small>TO</small></span>
-                  </div>
-                  <div class="hero-search">
-                    Search trains <span class="target-ring"></span>
-                  </div>
-                </div>
-              </div>
-              <div class="editor-status">
-                <span>Your task window</span><span>You click and type</span>
-              </div>
+          Present</button
+        ><a class="button button-small" href="#download"
+          >Download <span aria-hidden="true">↗</span></a
+        >
+      </div>
+    </header>
+    <main id="main">
+      <section
+        id="intro"
+        class="chapter hero-chapter"
+        data-chapter="Meet Desktop Guide"
+        aria-labelledby="hero-title"
+      >
+        <div class="hero wrap">
+          <div class="hero-copy">
+            <h1 id="hero-title">
+              You know the goal.<br />We help with<br /><span>the how.</span>
+            </h1>
+            <p class="lead">
+              An AI companion for your Windows screen. Describe what you want to
+              do, then follow clear visual guidance—or let the agent handle
+              everyday steps with your permission.
+            </p>
+            <div class="hero-actions">
+              <a class="button button-outline" href="#examples"
+                >See it in action <span aria-hidden="true">↗</span></a
+              ><a class="button" href="#download"
+                >Get the Windows pilot <span aria-hidden="true">↓</span></a
+              >
             </div>
-            <div class="guide-window">
-              <div class="guide-brand">
-                <span class="brand-mark" aria-hidden="true"></span>Desktop
-                Guide<span aria-hidden="true">−</span>
-              </div>
-              <div class="guide-step">
-                <span class="step-dot"></span>YOUR NEXT STEP
-              </div>
-              <h2>Find your<br />next step.</h2>
-              <p>
-                Choose <strong>Search trains</strong> to see the available
-                options.
-              </p>
-              <div class="guide-hint">
-                <span aria-hidden="true">↳</span>
-                <div>
-                  Your visual guide.<small
-                    >Find click target<br />Check screen</small
-                  >
-                </div>
-              </div>
-              <div class="guide-bottom">
-                <span class="step-dot"></span>Waiting for you<span
-                  aria-hidden="true"
-                  >•••</span
-                >
-              </div>
-            </div>
-            <svg class="floating-cursor" viewBox="0 0 78 94" aria-hidden="true">
-              <path
-                class="cursor-shadow"
-                d="M8 5 67 53 43 56 57 81 43 89 29 62 10 80Z"
-              />
-              <path
-                d="M5 3 64 51 40 54 54 79 40 87 26 60 7 78Z"
-                fill="#f5f6ef"
-                stroke="#67706c"
-                stroke-width="3"
-              />
-              <path
-                d="m14 20 37 29-17 3 13 25-5 3-14-28-13 14Z"
-                fill="#dfe4de"
-              />
-            </svg>
+            <p class="micro">Windows 11 · Guided + Autonomous</p>
           </div>
-          <div class="scene-caption">
-            <span>Illustrative product preview</span
-            ><button
-              class="motion-toggle"
-              id="motion-toggle"
-              aria-pressed="false"
-              type="button"
-            >
-              Pause motion <span aria-hidden="true">Ⅱ</span>
-            </button>
+          <div
+            class="hero-stage"
+            aria-label="Illustrative calendar and Desktop Guide companion. No real apps connected."
+          >
+            <div class="calendar-window">
+              <div class="window-bar">
+                <span class="window-dots" aria-hidden="true"
+                  ><i></i><i></i><i></i></span
+                ><span>Calendar · Example</span
+                ><span aria-hidden="true">− &nbsp; □ &nbsp; ×</span>
+              </div>
+              <div class="calendar-layout">
+                <div class="calendar-sidebar" aria-hidden="true">
+                  <span class="calendar-icon">▦</span><strong>Calendar</strong
+                  ><span class="sidebar-selected">⌂ &nbsp; Home</span
+                  ><span>＋ &nbsp; New event</span><span>▦ &nbsp; Today</span
+                  ><span>⌄ &nbsp; My calendars</span>
+                </div>
+                <div class="calendar-content">
+                  <h2>New event</h2>
+                  <span class="field-label">Title</span>
+                  <div class="mock-field">Catch up with Amal</div>
+                  <div class="mock-field small-field">
+                    Thursday <span>3:00 – 3:30 PM</span>
+                  </div>
+                  <p class="calendar-repeat">◎ &nbsp; Does not repeat</p>
+                  <div class="meeting-target">
+                    <span aria-hidden="true">▱</span> Add a meeting link<svg
+                      viewBox="0 0 40 48"
+                      class="scene-cursor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M4 3 34 27 22 29 29 41 22 45 15 32 5 40Z"
+                        fill="#f4f4ec"
+                        stroke="#070a0c"
+                        stroke-width="2"
+                      />
+                    </svg>
+                  </div>
+                  <div class="mock-description">
+                    Add a description (optional)
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="floating-guide">
+              <div class="guide-brand">
+                <span class="brand-mark" aria-hidden="true"></span>Desktop Guide
+                <span aria-hidden="true">−</span>
+              </div>
+              <p>Your next step</p>
+              <h3>Add a meeting link.</h3>
+              <p class="guide-instruction">
+                Help everyone join easily. Choose “Add a meeting link” to
+                continue.
+              </p>
+              <div class="guide-footer">
+                <span class="guide-progress" aria-hidden="true"
+                  ><i></i><i></i><i></i></span
+                ><span>Guided · You click</span>
+              </div>
+            </div>
+            <p class="scene-caption">
+              Illustrative workflow · No real apps connected
+            </p>
+          </div>
+        </div>
+        <div class="value-strip">
+          <div class="wrap value-grid">
+            <div>
+              <span class="value-symbol" aria-hidden="true"
+                ><svg viewBox="0 0 24 24">
+                  <path
+                    d="M5 4h14a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H8l-5 3V6a2 2 0 0 1 2-2Z"
+                  /></svg
+              ></span>
+              <div>
+                <h2>Say it in your own words</h2>
+                <p>Describe what you want to do.</p>
+              </div>
+            </div>
+            <div>
+              <span class="value-symbol" aria-hidden="true"
+                ><svg viewBox="0 0 24 24">
+                  <path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z" /></svg
+              ></span>
+              <div>
+                <h2>See the next step</h2>
+                <p>Get clear, visual guidance.</p>
+              </div>
+            </div>
+            <div>
+              <span class="value-symbol" aria-hidden="true"
+                ><svg viewBox="0 0 24 24">
+                  <path d="m12 2 8 4v6c0 5-8 10-8 10S4 17 4 12V6Z" />
+                  <path d="m8 12 3 3 5-6" /></svg
+              ></span>
+              <div>
+                <h2>Stay in control</h2>
+                <p>You decide what happens.</p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <div class="value-strip">
-        <div class="wrap value-grid">
-          <div>
-            <span class="value-icon" aria-hidden="true">↗</span>
-            <div>
-              <h2>Start with a prompt</h2>
-              <p>
-                Describe the goal. Gemini chooses a starting site and browser.
-              </p>
-            </div>
-          </div>
-          <div>
-            <span class="value-icon" aria-hidden="true">⌁</span>
-            <div>
-              <h2>Bring help to your app</h2>
-              <p>
-                Press Ctrl+Alt+Space to prepare help with the window in front.
-              </p>
-            </div>
-          </div>
-          <div>
-            <span class="value-icon" aria-hidden="true">⊙</span>
-            <div>
-              <h2>You make the move</h2>
-              <p>
-                Follow a drawn cursor and clear instructions. Your mouse stays
-                yours.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <section
-        id="how-it-works"
-        class="workflow wrap section"
-        aria-labelledby="workflow-title"
+        id="why"
+        class="chapter section wrap"
+        data-chapter="The problem we solve"
+        aria-labelledby="why-title"
       >
+        <p class="chapter-label">01 / The problem</p>
         <div class="section-intro">
-          <h2 id="workflow-title">Your screen.<br />Your pace.</h2>
+          <h2 id="why-title">Simple tasks.<br />Too many steps.</h2>
           <p>
-            From your first prompt to the next visible result, see how the
-            current companion works.
+            You know what you want to do. The hard part is figuring out where to
+            click, what comes next, and whether it worked.
           </p>
         </div>
-        <div
-          class="demo-tabs"
-          role="tablist"
-          aria-label="Explore the guided workflow"
-        >
+        <div class="comparison">
+          <div class="comparison-head" aria-hidden="true">
+            <span>The everyday friction</span><span></span
+            ><span>With Desktop Guide</span>
+          </div>
+          <div class="comparison-row">
+            <h3>Lost between tabs and tutorials</h3>
+            <span aria-hidden="true">→</span>
+            <p>Help beside the screen you’re actually using.</p>
+          </div>
+          <div class="comparison-row">
+            <h3>Unfamiliar buttons. Second guesses.</h3>
+            <span aria-hidden="true">→</span>
+            <p>A visual pointer and one clear next step.</p>
+          </div>
+          <div class="comparison-row">
+            <h3>The same small steps, over and over</h3>
+            <span aria-hidden="true">→</span>
+            <p>Permission-based help with clicking, scrolling and typing.</p>
+          </div>
+        </div>
+        <p class="audience-note">
+          For anyone who has ever asked: <strong>“Can you show me how?”</strong
+          ><span aria-hidden="true">↗</span>
+        </p>
+      </section>
+
+      <section
+        id="examples"
+        class="chapter section wrap"
+        data-chapter="Everyday possibilities"
+        aria-labelledby="examples-title"
+      >
+        <p class="chapter-label">02 / Everyday possibilities</p>
+        <div class="section-intro">
+          <h2 id="examples-title">A real task.<br />A little less friction.</h2>
+          <p>
+            Explore three ways a screen companion could help you get things
+            done.
+          </p>
+        </div>
+        <div class="scenario-tabs" role="tablist" aria-label="Example tasks">
           <button
-            type="button"
-            id="tab-source"
+            id="tab-meeting"
             role="tab"
-            aria-controls="demo-panel"
             aria-selected="true"
-            data-step="0"
-          >
-            <span>01</span>Describe your task
-          </button>
-          <button
+            aria-controls="scenario-panel"
+            data-scenario="meeting"
             type="button"
-            id="tab-guide"
-            role="tab"
-            aria-controls="demo-panel"
-            aria-selected="false"
-            tabindex="-1"
-            data-step="1"
           >
-            <span>02</span>Follow the guidance
-          </button>
-          <button
+            Meet &amp; share</button
+          ><button
+            id="tab-tatkal"
+            role="tab"
+            aria-selected="false"
+            aria-controls="scenario-panel"
+            data-scenario="tatkal"
+            tabindex="-1"
             type="button"
-            id="tab-learn"
-            role="tab"
-            aria-controls="demo-panel"
-            aria-selected="false"
-            tabindex="-1"
-            data-step="2"
           >
-            <span>03</span>Check the result
+            Tatkal booking</button
+          ><button
+            id="tab-schedule"
+            role="tab"
+            aria-selected="false"
+            aria-controls="scenario-panel"
+            data-scenario="schedule"
+            tabindex="-1"
+            type="button"
+          >
+            Plan your day
           </button>
         </div>
         <div
-          class="demo"
-          id="demo-panel"
+          id="scenario-panel"
           role="tabpanel"
-          aria-labelledby="tab-source"
+          aria-labelledby="tab-meeting"
           tabindex="0"
-          data-step="0"
         >
-          <div class="demo-canvas">
-            <div class="demo-prompt" id="demo-prompt">
-              <div class="guide-brand">
-                <span class="brand-mark" aria-hidden="true"></span>Start with
-                your goal
+          <div class="task-prompt">
+            <span class="field-label">Example request</span>
+            <blockquote id="scenario-prompt">
+              “Create a meeting and help me share the joining link with Amal on
+              WhatsApp.”
+            </blockquote>
+          </div>
+          <div class="demo-workspace">
+            <div class="demo-browser">
+              <div class="window-bar">
+                <span class="window-dots" aria-hidden="true"
+                  ><i></i><i></i><i></i></span
+                ><span id="scenario-app">Example workflow · Meeting</span
+                ><span aria-hidden="true">↻</span>
               </div>
-              <p class="demo-example-label">EXAMPLE TASK</p>
-              <blockquote>
-                “Open Chrome and help me find a train ticket.”
-              </blockquote>
-              <button class="button" id="demo-launch" type="button">
-                Open browser &amp; guide me <span aria-hidden="true">↗</span>
-              </button>
-              <p class="demo-prompt-note">
-                In the app, starting sends your prompt for planning, then shares
-                live screenshots of the task window for guidance.
-              </p>
-            </div>
-            <div class="demo-notepad demo-browser" id="demo-browser" hidden>
-              <div class="demo-titlebar">
-                <span
-                  ><span class="notepad-icon" aria-hidden="true">◎</span>
-                  <span>Journey planner — example browser</span></span
-                ><span aria-hidden="true">− &nbsp; □ &nbsp; ×</span>
-              </div>
-              <div class="demo-menubar">
-                <span aria-hidden="true">← &nbsp; → &nbsp; ↻</span
-                ><span>Illustrative website</span>
-              </div>
-              <div class="demo-web-content">
-                <h3>Find your next journey.</h3>
-                <div class="demo-route">
-                  <div><small>From</small><span>New Delhi</span></div>
-                  <span aria-hidden="true">→</span>
-                  <div><small>To</small><span>Jaipur</span></div>
+              <div class="demo-screen" id="demo-screen">
+                <div class="app-topline">
+                  <span>Meet</span><span>Illustrative app</span>
                 </div>
-                <div id="demo-target-area" class="demo-target-area">
-                  <button id="demo-search" type="button">
-                    Search trains
-                    <span class="demo-target-ring" aria-hidden="true"></span>
-                    <svg
-                      class="demo-drawn-cursor"
-                      viewBox="0 0 78 94"
-                      aria-hidden="true"
-                    >
-                      <path
-                        d="M5 3 64 51 40 54 54 79 40 87 26 60 7 78Z"
-                        fill="white"
-                        stroke="#172727"
-                        stroke-width="5"
-                      />
-                    </svg>
-                  </button>
-                  <span class="demo-callout">Click here</span>
-                </div>
-                <div id="demo-result" class="demo-result" hidden>
-                  <span class="demo-result-icon" aria-hidden="true">✓</span>
-                  <div>
-                    <strong>Journey options are on screen.</strong>
-                    <p>Illustrative search result · No booking made</p>
+                <div class="app-sheet">
+                  <span class="app-symbol" aria-hidden="true">▱</span>
+                  <h3>A link to bring<br />everyone together.</h3>
+                  <p>Start with a place to meet.</p>
+                  <div class="event-card">
+                    <strong>Catch up with Amal</strong>
+                    <p>
+                      Create a joining link, then share it with your friend.
+                    </p>
+                    <span class="mock-primary">Create a meeting link ↗</span>
                   </div>
                 </div>
               </div>
-              <div class="demo-status">
-                <span>Your task window</span
-                ><span id="demo-browser-status"
-                  >Visual guide · You make the click</span
-                >
+            </div>
+            <div class="demo-guide">
+              <div aria-live="polite" aria-atomic="true">
+                <p class="step-counter" id="step-counter">01 / 04</p>
+                <h3 id="step-heading">Create a place to meet.</h3>
+                <p id="step-description">
+                  Start in your meeting app. Desktop Guide can guide the next
+                  click or handle ordinary steps with your permission.
+                </p>
               </div>
-            </div>
-            <p class="demo-disclosure">
-              <span aria-hidden="true">ⓘ</span> Illustrative demo · No screen
-              access or AI requests
-            </p>
-          </div>
-          <div class="demo-guide">
-            <div class="guide-brand">
-              <span class="brand-mark" aria-hidden="true"></span>Desktop Guide
-            </div>
-            <div aria-live="polite" aria-atomic="true">
-              <h3 id="demo-heading">A goal is all you need to start.</h3>
-              <p id="demo-description">
-                Describe the task in your own words. Gemini chooses a starting
-                site and opens a new browser window, or asks for clarification.
+              <div class="step-track" id="step-track" aria-hidden="true">
+                <span class="active"></span><span></span><span></span
+                ><span></span>
+              </div>
+              <div class="demo-actions">
+                <button class="button" type="button" id="demo-next" hidden>
+                  Next step <span aria-hidden="true">→</span></button
+                ><button
+                  class="text-button"
+                  type="button"
+                  id="demo-restart"
+                  hidden
+                >
+                  Restart <span aria-hidden="true">↺</span>
+                </button>
+              </div>
+              <p class="demo-disclosure">
+                Illustrative walkthrough · No real booking, meeting or message
+                is created.
               </p>
             </div>
-            <div class="demo-buttons">
-              <button type="button" class="button" id="demo-next">
-                Try the flow <span aria-hidden="true">→</span></button
-              ><button
-                type="button"
-                class="button button-outline"
-                id="demo-restart"
-              >
-                Restart
-              </button>
-              <button type="button" class="demo-find" id="demo-find" hidden>
-                Find click target
-              </button>
-            </div>
-            <p
-              class="demo-target-status"
-              id="demo-target-status"
-              role="status"
-            ></p>
           </div>
+          <p class="scenario-boundary" id="scenario-boundary">
+            You handle sign-in, copy the link, switch apps, and press Send. App
+            switching and clipboard transfer currently need your help.
+          </p>
         </div>
-        <p class="demo-footnote">
-          In the app, guidance comes from the current screenshot. You perform
-          each action.
-        </p>
-        <div class="current-window-note">
-          <div>
-            <span>Already in the right app?</span>
+        <noscript
+          ><p class="no-js-note">
+            Enable JavaScript to step through the examples. Desktop Guide can
+            help navigate a Tatkal search and prepare calendar details; you
+            handle sign-in, payment, final booking confirmation and sending
+            messages. These workflows are illustrative and are still being
+            qualified in real apps.
+          </p></noscript
+        >
+      </section>
+
+      <section
+        id="how-it-works"
+        class="chapter section wrap"
+        data-chapter="How you use it"
+        aria-labelledby="how-title"
+      >
+        <p class="chapter-label">03 / How it works</p>
+        <h2 id="how-title">From “how do I?”<br />to “I’ve got this.”</h2>
+        <div class="how-grid">
+          <article>
+            <span class="how-number">01</span>
+            <h3>Tell it your goal</h3>
             <p>
-              Bring it to the front, press the shortcut, describe your goal,
-              then choose <strong>Help with this window</strong>. The shortcut
-              alone shares no images.
+              Type a request or record your voice. Start in a browser or call
+              the companion into an open app.
+            </p>
+          </article>
+          <article>
+            <span class="how-number">02</span>
+            <h3>Choose your kind of help</h3>
+            <p>
+              Follow the guide and click yourself, or allow the agent to handle
+              ordinary steps.
+            </p>
+          </article>
+          <article>
+            <span class="how-number">03</span>
+            <h3>Check. Continue.<br />Stay in control.</h3>
+            <p>
+              The companion checks the current screen. Pause, take over, or stop
+              whenever you need.
+            </p>
+          </article>
+        </div>
+        <div class="shortcut-row">
+          <div>
+            <h3>Already in an app?</h3>
+            <p>
+              Bring it to the front and summon your companion. Then describe
+              your goal and choose “Help with this window”.
             </p>
           </div>
           <div class="shortcut" aria-label="Control plus Alt plus Space">
@@ -375,259 +407,228 @@
             ><kbd>Space</kbd>
           </div>
         </div>
-        <noscript
-          ><p>
-            The interactive walkthrough needs JavaScript. All feature
-            information and downloads remain available below.
-          </p></noscript
-        >
+        <p class="micro">
+          The shortcut alone shares no images. Review a voice transcript before
+          starting a task.
+        </p>
+        <div class="phone-note">
+          <span class="chapter-label">Also in the pilot</span>
+          <h3>Start a PC task from your phone.</h3>
+          <p>
+            Enable phone control in Windows Preferences, then sign in to the
+            phone controller with the same account. Your PC stays awake and
+            unlocked; the connection lasts one hour.
+          </p>
+        </div>
       </section>
 
       <section
         id="features"
-        class="features wrap section"
-        aria-labelledby="features-title"
+        class="chapter section wrap"
+        data-chapter="Two ways to get help"
+        aria-labelledby="modes-title"
       >
-        <div>
-          <h2 id="features-title">
-            A helping hand.<br />You hold<br />the controls.
-          </h2>
-          <p class="feature-intro">
-            Live help stays close to the task, from the first instruction to a
-            fresh check of the result.
+        <p class="chapter-label">04 / Your pace. Your choice.</p>
+        <h2 id="modes-title">
+          A guide when you’re learning.<br />A hand when you’re busy.
+        </h2>
+        <div class="mode-grid">
+          <article class="mode-card guided">
+            <span class="mode-label">Guided</span>
+            <h3>Show me how</h3>
+            <ul>
+              <li>Visual cursor and step-by-step instructions</li>
+              <li>You make every click</li>
+              <li>Build confidence as you go</li>
+            </ul>
+          </article>
+          <article class="mode-card autonomous">
+            <span class="mode-label">Autonomous</span>
+            <h3>Help me do it</h3>
+            <ul>
+              <li>Clicks, scrolls and types with consent</li>
+              <li>Works within the selected window</li>
+              <li>Hands back sensitive steps</li>
+            </ul>
+          </article>
+        </div>
+        <div class="control-note">
+          <span aria-hidden="true">◎</span>
+          <p>
+            Your screen is shared only after permission. Stop ends capture and
+            control. In Autonomous mode, moving your mouse or typing pauses the
+            agent.
           </p>
         </div>
-        <div class="feature-list">
-          <article>
-            <span aria-hidden="true">≡</span>
-            <h3>A companion that stays close</h3>
-            <p>
-              A compact floating card keeps the current instruction and target
-              status visible. Expand it to ask about the step or start a new
-              task.
-            </p>
-          </article>
-          <article>
-            <span aria-hidden="true">↗</span>
-            <h3>See where to look</h3>
-            <p>
-              Guided mode draws a cursor and click ring for you to follow.
-              Autonomous mode animates the controlled cursor as it moves to the
-              target. Both respect your reduced-motion preference.
-            </p>
-          </article>
-          <article>
-            <span aria-hidden="true">⌘</span>
-            <h3>Find it. Then check it.</h3>
-            <p>
-              Find click target retries the current instruction. Check screen
-              checks what happened after your action. Loading pages wait for a
-              visible change before the next step.
-            </p>
-          </article>
-          <article>
-            <span aria-hidden="true">⊙</span>
-            <h3>Stop means stop</h3>
-            <p>
-              Pause before sensitive input. Stop ends capture and cancels
-              pending work locally. Resume asks for fresh consent to observe
-              your window.
-            </p>
-          </article>
-          <article>
-            <span aria-hidden="true">◎</span>
-            <h3>Guidance from your screen</h3>
-            <p>
-              The current build uses live screenshots to choose instructions and
-              targets. Uncertain, covered or stale targets are withheld.
-            </p>
-          </article>
-          <article>
-            <span aria-hidden="true">↺</span>
-            <h3>Keep your place through a hiccup</h3>
-            <p>
-              Lost responses are recovered first. Temporary analysis failures
-              get up to three fresh-image retries, with visible progress. Resume
-              reconnects in the same mode and plans from the current screen.
-            </p>
-          </article>
-        </div>
+        <p class="mode-footnote">
+          The current pilot works within one selected window, for up to 10
+          minutes or 30 dispatch attempts per grant. Login, CAPTCHA, payments,
+          booking confirmation and final message sending stay with you.
+        </p>
       </section>
 
       <section
         id="download"
-        class="download-section section"
+        class="chapter section download-section"
+        data-chapter="Try Desktop Guide"
         aria-labelledby="download-title"
       >
         <div class="wrap">
           <div class="download-intro">
             <div>
+              <p class="chapter-label">05 / Take the next step</p>
               <h2 id="download-title">
-                Your next step<br /><span>starts here.</span>
+                Make your next task<br />feel a little easier.
               </h2>
-              <p>
-                Download Desktop Guide for Windows<br class="wide-only" />
-                and bring a guide to your next task.
-              </p>
+              <p class="lead">Try Desktop Guide on your Windows PC.</p>
             </div>
             <div class="download-box">
-              <div class="download-platform">
-                <svg viewBox="0 0 40 40" aria-hidden="true">
-                  <path
-                    d="M2 6 18 4v15H2Zm19-2L38 1v18H21ZM2 22h16v15L2 34Zm19 0h17v18l-17-3Z"
-                    fill="currentColor"
-                  />
-                </svg>
-                <div>
-                  <h3>Windows development preview</h3>
-                  <p>Windows 11 · x64 · Portable ZIP</p>
-                </div>
-              </div>
+              <h3>Desktop Guide for Windows</h3>
               <a class="button download-latest" href="{{LATEST_URL}}" download
-                ><span aria-hidden="true">↓</span> Download for Windows</a
+                >Download Windows pilot <span aria-hidden="true">↓</span></a
               >
+              <p>Windows 11 · x64 · Portable ZIP</p>
               <p class="package-meta">{{LATEST_VERSION}} · {{LATEST_SIZE}}</p>
               <p class="download-caveat">
-                Unsigned development build. An invited pilot account and
-                internet connection are required. The latest version uses live
-                cloud guidance, optional autonomous actions, voice prompts and phone control.
+                Unsigned development pilot · Invite-only sign-in · Internet
+                required. Downloading does not create an account.
               </p>
-            </div>
-          </div>
-          <div id="releases" class="release-section">
-            <div class="release-heading">
-              <div>
-                <h2>Every release. One place.</h2>
-                <p>
-                  Choose a version, read what changed, and verify your download.
-                </p>
-              </div>
-              <label class="release-filter"
-                ><span class="sr-only">Filter releases by channel</span
-                ><select id="release-filter">
-                  <option value="all">All releases</option>
-                  <option value="development">Development</option>
-                  <option value="stable">Stable</option>
-                </select></label
+              <a class="archive-link" href="#releases"
+                >Release history &amp; checksums
+                <span aria-hidden="true">↗</span></a
               >
             </div>
-            <div class="release-table">
-              <div class="release-table-head" aria-hidden="true">
-                <span>Version</span><span>Released</span><span>Channel</span
-                ><span>Download</span>
-              </div>
-              <div id="release-list">{{RELEASE_ROWS}}</div>
-            </div>
-            <p id="release-empty" class="release-empty" role="status" hidden>
-              No stable releases yet. The development preview is available under
-              All releases.
-            </p>
-            <p class="release-count" id="release-count" aria-live="polite">
-              {{RELEASE_COUNT_LABEL}}
-            </p>
           </div>
+          <details id="releases" class="release-section">
+            <summary>
+              Release history &amp; checksums <span aria-hidden="true">+</span>
+            </summary>
+            <div class="release-content">
+              <div class="release-heading">
+                <div>
+                  <h3>Every release. One place.</h3>
+                  <p>Choose a version and verify your download.</p>
+                </div>
+                <label
+                  ><span class="sr-only">Filter releases by channel</span
+                  ><select id="release-filter">
+                    <option value="all">All releases</option>
+                    <option value="development">Development</option>
+                    <option value="stable">Stable</option>
+                  </select></label
+                >
+              </div>
+              <div class="release-table">
+                <div class="release-table-head" aria-hidden="true">
+                  <span>Version</span><span>Released</span><span>Channel</span
+                  ><span>Download</span>
+                </div>
+                <div id="release-list">{{RELEASE_ROWS}}</div>
+              </div>
+              <p id="release-empty" class="release-empty" role="status" hidden>
+                No stable releases yet. Choose All releases for the development
+                pilot.
+              </p>
+              <p class="release-count" id="release-count" aria-live="polite">
+                {{RELEASE_COUNT_LABEL}}
+              </p>
+            </div>
+          </details>
           <div class="faq">
+            <h2>A few things to know.</h2>
             <details>
               <summary>
-                How do I install Desktop Guide?<span aria-hidden="true">+</span>
+                What is Desktop Guide?<span aria-hidden="true">+</span>
               </summary>
               <p>
-                Download the ZIP, extract all files to a folder you can write
-                to, and open <strong>DesktopGuide.App.exe</strong>. Windows 11
-                x64 is required. The .NET runtime is included. This preview is
-                unsigned, so Windows may display a security warning. No
-                installer or automatic updater is included. To update, close the
-                app from its tray menu and extract the latest ZIP into a new
-                folder. Older extracted copies do not update automatically.
+                Desktop Guide is an AI companion for Windows that understands a
+                task from your prompt and uses live screenshots of your
+                permitted window to suggest the next step. It can open a browser
+                for your goal, point to controls, check the result, and
+                optionally click, scroll and type with local consent. It is an
+                unsigned development pilot.
               </p>
             </details>
             <details>
               <summary>
-                Do I need an account?<span aria-hidden="true">+</span>
-              </summary>
-              <p>
-                Yes. The latest build needs an invited pilot account and an
-                internet connection for live guidance. Sign in with your invited
-                email and the permanent password you set. Downloading the ZIP
-                does not create an account. Offline walkthroughs have been
-                removed from the current version; the older archived pilot has
-                different behavior.
-              </p>
-            </details>
-            <details>
-              <summary>
-                What can the development preview do?<span aria-hidden="true"
-                  >+</span
-                >
-              </summary>
-              <p>
-                Start from a prompt or the current-window shortcut, follow live
-                screenshot guidance in the floating companion, retry a target,
-                check your result, or allow autonomous actions. Speak a prompt,
-                review its text, or connect the phone controller from desktop
-                settings. Chrome is the default for
-                new browser tasks; name Edge or Firefox in your prompt if
-                preferred. Full real-application workflows, native overlay
-                placement, voice and accessibility are still being qualified.
-                This is an unsigned development pilot; the website demo is
-                illustrative.
-              </p>
-            </details>
-            <details>
-              <summary>
-                What does the app see?<span aria-hidden="true">+</span>
-              </summary>
-              <p>
-                Starting a task sends your prompt for cloud planning, then
-                shares live screenshots of the task window for guidance. The
-                current build uses screenshots only; DOM and Windows
-                accessibility inspection are disabled. An optional manual
-                source/preview flow supports privacy masks. The app is designed
-                not to persist raw learner screenshots or audio. This website
-                never captures your desktop.
-              </p>
-            </details>
-            <details>
-              <summary>
-                Will it click, type or deploy for me?<span aria-hidden="true"
-                  >+</span
-                >
-              </summary>
-              <p>
-                Choose Guided to follow the cursor yourself, or Autonomous to let
-                the agent click, scroll and type in your selected task window.
-                Autonomous tasks need your local permission and run for up to 30
-                actions or 10 minutes. You handle login, CAPTCHA, billing and final
-                submissions. Moving your mouse or typing pauses the agent.
-              </p>
-            </details>
-            <details>
-              <summary>
-                What if the target is missing or the page is loading?<span
+                Does it work across every app automatically?<span
                   aria-hidden="true"
                   >+</span
                 >
               </summary>
               <p>
-                The companion shows an animated analysis indicator and retries
-                temporary analysis failures up to three times with fresh images.
-                Autonomous mode also rechecks blocked targets before pausing.
-                Resume reconnects, reads the current screen and keeps your chosen
-                mode. Stop cancels locally and clears permissions immediately.
-                Bring the task window back to the front if focus is needed.
+                The pilot works within one selected or opened window. It can
+                launch a browser, but you must open and select native apps
+                yourself. Switching apps, moving a link through the clipboard,
+                file uploads and unsupported actions need your help. It pauses
+                when the screen or next step is uncertain. Full workflows across
+                real applications are still being qualified.
               </p>
             </details>
             <details>
               <summary>
-                How do I pause, stop or exit?<span aria-hidden="true">+</span>
+                Can it book a Tatkal ticket or send a WhatsApp message?<span
+                  aria-hidden="true"
+                  >+</span
+                >
               </summary>
               <p>
-                Pause is available in the expanded companion. Stop is available
-                on the dock, in the tray and through Ctrl+Alt+Shift+S when the
-                shortcut is registered. Stop ends capture and cancels pending
-                work; resuming requires fresh observation consent. Closing the
-                main panel leaves the companion running. Choose Exit from the
-                tray to quit.
+                These are examples of tasks it could help you work through, not
+                promises of completed integrations or guaranteed outcomes. It
+                can guide ordinary navigation and form steps; you handle login,
+                CAPTCHA, payment, booking confirmation and pressing Send. Tatkal
+                availability and booking success are not guaranteed. The
+                website’s meeting, WhatsApp, train and calendar walkthroughs are
+                simulations. Signed-in Google Meet, IRCTC and WhatsApp workflows
+                have not been qualified end to end.
+              </p>
+            </details>
+            <details>
+              <summary>
+                What do I need to try it?<span aria-hidden="true">+</span>
+              </summary>
+              <p>
+                You need Windows 11 x64, an invited pilot account and internet
+                access. Download the ZIP, extract it to a writable folder and
+                open <strong>DesktopGuide.App.exe</strong>. The .NET runtime is
+                included. The app is unsigned and Windows may show a security
+                warning. There is no installer or automatic updater: close the
+                app from its tray menu and extract a new release into a new
+                folder to update. No offline walkthrough is included in the
+                latest build.
+              </p>
+            </details>
+            <details>
+              <summary>
+                What does it see, and how do I stop it?<span aria-hidden="true"
+                  >+</span
+                >
+              </summary>
+              <p>
+                Your task prompt is sent for cloud planning. After capture
+                permission, live screenshots of the selected window are sent for
+                guidance; voice transcription also uses the cloud. Privacy masks
+                are available in the manual source flow. The app is designed not
+                to persist raw learner screenshots or audio. Stop is available
+                on the companion, in the tray, and through Ctrl+Alt+Shift+S when
+                registered. Stop cancels locally and clears permissions.
+                Resuming needs fresh consent. This website never captures your
+                desktop.
+              </p>
+            </details>
+            <details>
+              <summary>
+                Can it run a scheduled task while I’m away?<span
+                  aria-hidden="true"
+                  >+</span
+                >
+              </summary>
+              <p>
+                The scheduling example is about helping you create an event in a
+                calendar app. The pilot does not include an unattended
+                background scheduler. Phone control requires an awake, unlocked
+                PC and an enabled desktop connection; sensitive steps still need
+                you.
               </p>
             </details>
           </div>
@@ -635,12 +636,34 @@
       </section>
     </main>
     <footer class="wrap">
-      <a href="#top" class="brand"
+      <a class="brand" href="#intro"
         ><span class="brand-mark" aria-hidden="true"></span>Desktop Guide</a
-      ><span>Learn a little. Do a lot.</span
-      ><a class="text-link" href="#top"
-        >Back to top <span aria-hidden="true">↑</span></a
-      >
+      ><span>A little guidance. A lot more possible.</span
+      ><a class="text-link" href="#top">Back to top ↑</a>
     </footer>
+    <nav
+      class="presentation-controls"
+      aria-label="Presentation controls"
+      hidden
+    >
+      <button
+        id="present-prev"
+        class="text-button"
+        type="button"
+        aria-label="Previous chapter"
+      >
+        ←</button
+      ><span id="present-status" aria-live="polite"
+        >1 / 6 · Meet Desktop Guide</span
+      ><button
+        id="present-next"
+        class="text-button"
+        type="button"
+        aria-label="Next chapter"
+      >
+        →</button
+      ><span class="presentation-hint">Arrow keys · Esc to exit</span
+      ><button id="present-exit" class="text-button" type="button">Exit</button>
+    </nav>
   </body>
 </html>

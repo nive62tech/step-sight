@@ -8,6 +8,26 @@ namespace DesktopGuide.AppTests;
 
 public sealed class GuidanceImageTests
 {
+    [Fact] public void AssistantMasksClipToTheSelectedMonitorIncludingNegativeCoordinates()
+    {
+        var masks = AssistantCaptureMasks.Project(new(-1920, 0, 1920, 1080), [new(-100, 950, 300, 240), new(100, 0, 100, 100), new(-2000, -50, 180, 200)]);
+        Assert.Equal(2, masks.Count);
+        foreach (var mask in masks) mask.Validate();
+        Assert.Equal(1820 / 1920d, masks[0].Left); Assert.Equal(1, masks[0].Right); Assert.Equal(1, masks[0].Bottom);
+        Assert.Equal(0, masks[1].Left); Assert.Equal(0, masks[1].Top); Assert.Equal(100 / 1920d, masks[1].Right);
+    }
+    [Fact] public void MovingAssistantMasksDoesNotTriggerActivityButCannotAuthorizeInput()
+    {
+        using var capture = new WindowsCapture();
+        var geometry = new Geometry(Guid.NewGuid(), Guid.NewGuid(), new(0,0,800,450),800,450,96,"fixture",Guid.NewGuid(),new(0,0,1,1),new(0,0,1,1));
+        var before = Image(geometry, new(100,100,200,180)) with { PrivacyMasks = [new(.125,100/450d,.375,280/450d)] };
+        var after = Image(geometry, new(220,100,200,180)) with { PrivacyMasks = [new(.275,100/450d,.525,280/450d)] };
+        Assert.False(capture.HasMeaningfulChange(before, after));
+        Assert.False(capture.IsActionTargetCurrent(before, after, new("click",.8,.8,"left")));
+        Assert.Throws<SafetyException>(() => after.RequireUnmaskedPoint(.35,.4));
+        var changedTask = Image(geometry, new(550,10,220,120)) with { PrivacyMasks = after.PrivacyMasks };
+        Assert.True(capture.HasMeaningfulChange(before, changedTask));
+    }
     [Fact] public void ActionAllowsRemoteClockNoiseButRejectsTargetChangesOverlaysAndKeyboardDrift()
     {
         using var capture = new WindowsCapture();

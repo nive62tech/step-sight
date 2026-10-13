@@ -28,10 +28,13 @@ public static class LocalRiskPolicy
         }
         if (proposal.Action.Kind == "type" && step.Target is null)
             throw new SafetyException("Typing requires a visibly identified, focused input field.");
+        if (proposal.Action.Kind == "open_app" && step.Target is not null)
+            throw new SafetyException("Application handoff cannot contain screen coordinates.");
     }
     private static readonly string[] ManualContexts = ["password", "secret", "mfa", "captcha", "payment", "billing", "delete", "deploy", "publish", "permission", "administrator", "terminal", "command", "production"];
     public static void RequirePracticeDemonstration(string lessonId, string goal, string sourceLabel, ActionProposal proposal)
     {
+        if (proposal.Action.Kind == "open_app") throw new SafetyException("Practice demonstrations cannot change applications.");
         if (lessonId != "sandbox" || !sourceLabel.Contains("Desktop Guide Training Sandbox", StringComparison.OrdinalIgnoreCase))
             throw new SafetyException("Pilot demonstrations are restricted to the disposable training sandbox. Complete other applications manually.");
         var context = goal + " " + proposal.Effect + " " + proposal.Action.Text;

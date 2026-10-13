@@ -56,10 +56,12 @@ public sealed record InputAction(string Kind,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Button = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Ticks = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Text = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Chord = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Chord = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Application = null)
 {
     public void Validate()
     {
+        if (Kind != "open_app" && Application is not null) throw new SafetyException("Unexpected application argument");
         switch (Kind)
         {
             case "click" when X.HasValue && Y.HasValue && Button == "left" && Ticks is null && Text is null && Chord is null:
@@ -70,6 +72,8 @@ public sealed record InputAction(string Kind,
                 if (Text.Any(char.IsControl)) throw new SafetyException("Text cannot contain commands or control characters");
                 break;
             case "key_chord" when Chord is "Ctrl+A" or "Ctrl+C" or "Ctrl+S" or "Escape" or "Tab" or "Enter" or "Backspace" or "Home" or "End" or "Left" or "Right" or "Up" or "Down" && X is null && Y is null && Button is null && Ticks is null && Text is null:
+                break;
+            case "open_app" when Application == "whatsapp" && X is null && Y is null && Button is null && Ticks is null && Text is null && Chord is null:
                 break;
             default: throw new SafetyException("Unsupported input primitive");
         }
@@ -86,8 +90,10 @@ public sealed record VerificationResult(string Status, Evidence[] Evidence, stri
     string? RecoverySuggestion, string Provenance);
 public sealed record Observation(Guid Id, DateTimeOffset CapturedAt, Guid ScopeId, Guid GeometryId,
     int ImageWidth, int ImageHeight, bool PrivacyFiltered);
+public sealed record TaskContext(string CurrentApplication, string[] AllowedApplications, Guid? HandoffFromScopeId = null);
 public sealed record TurnRequest(int SchemaVersion, Guid RequestId, int SessionVersion, Observation Observation,
-    string EventKind, GuidanceStep? PreviousStep) : IVersioned;
+    string EventKind, GuidanceStep? PreviousStep,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] TaskContext? TaskContext = null) : IVersioned;
 public sealed record TurnResponse(int SchemaVersion, Guid SessionId, int SessionVersion, Guid TurnId,
     Guid ObservationId, string Provider, GuidanceStep? Step, VerificationResult? Verification,
     ActionProposal? ActionProposal, bool Completed,

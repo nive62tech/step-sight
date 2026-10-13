@@ -21,11 +21,12 @@
   </Window.Styles>
   <Grid RowDefinitions="Auto,*,Auto">
     <Border Classes="header" Padding="22,16">
-      <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
         <Border Background="{DynamicResource ModeAccent}" CornerRadius="10" Width="36" Height="36" Margin="0,0,12,0"><TextBlock Text="dg" FontFamily="Georgia" FontSize="23" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
         <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding BrandName}" FontSize="19" FontWeight="SemiBold" /><TextBlock Text="{Binding EnvironmentLabel}" Classes="muted" FontSize="11" /></StackPanel>
         <TextBlock Grid.Column="2" Text="{Binding AccountShort}" Classes="muted" VerticalAlignment="Center" Margin="8,0,16,0" AutomationProperties.LiveSetting="Polite" />
         <Button Grid.Column="3" Content="Stop" Classes="danger" Command="{Binding StopCommand}" AutomationProperties.Name="Emergency Stop lesson" />
+        <Button Grid.Column="4" Content="Exit app" Classes="quiet" Command="{Binding ExitAppCommand}" Margin="8,0,0,0" ToolTip.Tip="Stop the task and completely quit Desktop Guide" AutomationProperties.Name="Exit Desktop Guide completely" />
       </Grid>
     </Border>
     <Grid Grid.Row="1" ColumnDefinitions="190,*">
@@ -85,7 +86,7 @@
                 <TextBlock Text="How should the agent help?" Classes="section" />
                 <StackPanel Orientation="Horizontal" Spacing="16"><TextBlock Text="Guided" Classes="accent" FontWeight="SemiBold" VerticalAlignment="Center" /><ToggleSwitch IsChecked="{Binding AutonomousModeSelected}" IsEnabled="{Binding CanChooseMode}" OnContent="" OffContent="" AutomationProperties.Name="Autonomous mode: off is Guided, on is Autonomous" /><TextBlock Text="Autonomous" Classes="accent" FontWeight="SemiBold" VerticalAlignment="Center" /></StackPanel>
                 <TextBlock Text="{Binding TaskModeDescription}" Classes="muted" FontSize="13" />
-                <CheckBox IsChecked="{Binding AutonomousConsent}" IsVisible="{Binding IsAutonomous}" IsEnabled="{Binding !IsBusy}"><TextBlock Text="Allow the agent to control this task window" TextWrapping="Wrap" /></CheckBox>
+                <CheckBox IsChecked="{Binding AutonomousConsent}" IsVisible="{Binding IsAutonomous}" IsEnabled="{Binding !IsBusy}"><TextBlock Text="Allow control of this window and WhatsApp if named in my task" TextWrapping="Wrap" /></CheckBox>
                 <TextBlock Text="{Binding TaskDisclosure}" FontSize="12" />
               </StackPanel></Border>
             </StackPanel>
@@ -114,7 +115,7 @@
               <TextBlock Text="Your selected source is processed by the AWS backend and managed GCP model, with global processing allowed. This application doesn't save raw media; provider retention conditions apply." Classes="muted" FontSize="12" />
               <Grid ColumnDefinitions="*,16,*"><StackPanel Spacing="8"><TextBlock Text="How should I help?" Classes="section" /><ComboBox ItemsSource="{Binding Modes}" SelectedIndex="{Binding SelectedMode}" HorizontalAlignment="Stretch" AutomationProperties.Name="Interaction mode" /></StackPanel><StackPanel Grid.Column="2" Spacing="8"><TextBlock Text="Explanation detail" Classes="section" /><ComboBox ItemsSource="{Binding DetailLevels}" SelectedItem="{Binding SelectedDetail}" HorizontalAlignment="Stretch" AutomationProperties.Name="Explanation detail" /></StackPanel></Grid>
               <TextBlock Text="{Binding ModeHelp}" Classes="muted" FontSize="12" />
-              <CheckBox IsChecked="{Binding AutonomousConsent}" IsVisible="{Binding IsAutonomous}"><TextBlock Text="Allow autonomous control of the selected window for this task" TextWrapping="Wrap" /></CheckBox>
+              <CheckBox IsChecked="{Binding AutonomousConsent}" IsVisible="{Binding IsAutonomous}"><TextBlock Text="Allow control of this window and WhatsApp if named in my task" TextWrapping="Wrap" /></CheckBox>
               <StackPanel Spacing="6">
                 <CheckBox Content="Allow the guide to point with my cursor" IsChecked="{Binding PointerConsent}" IsVisible="{Binding ShowPointerPermission}" />
                 <CheckBox Content="Allow separately approved one-action demonstrations" IsChecked="{Binding DemonstrationConsent}" IsVisible="{Binding ShowDemoPermission}" />

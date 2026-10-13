@@ -100,6 +100,7 @@
             "type",
             "scroll",
             "key_chord",
+            "open_app",
             "manual",
             "wait"
           ],

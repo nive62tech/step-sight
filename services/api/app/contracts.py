@@ -74,7 +74,7 @@ class GuidanceStep(Contract):
     instruction: str = Field(min_length=1, max_length=1000)
     explanation: str = Field(max_length=1500)
     target: Target | None = None
-    expected_user_action: Literal["click", "type", "scroll", "key_chord", "manual", "wait"]
+    expected_user_action: Literal["click", "type", "scroll", "key_chord", "open_app", "manual", "wait"]
     postconditions: list[Postcondition] = Field(min_length=1, max_length=5)
     hints: list[Annotated[str, Field(max_length=500)]] = Field(default_factory=list, max_length=5)
     evidence: list[Evidence] = Field(min_length=1, max_length=5)
@@ -105,7 +105,12 @@ class KeyAction(Contract):
     chord: Literal["Ctrl+A", "Ctrl+C", "Ctrl+S", "Escape", "Tab", "Enter", "Backspace", "Home", "End", "Left", "Right", "Up", "Down"]
 
 
-Action = Annotated[ClickAction | ScrollAction | TypeAction | KeyAction, Field(discriminator="kind")]
+class OpenAppAction(Contract):
+    kind: Literal["open_app"]
+    application: Literal["whatsapp"]
+
+
+Action = Annotated[ClickAction | ScrollAction | TypeAction | KeyAction | OpenAppAction, Field(discriminator="kind")]
 
 
 class ActionProposal(Contract):
@@ -163,13 +168,20 @@ class SessionView(Contract):
     pending_step: GuidanceStep | None = None
 
 
+class TaskContext(Contract):
+    current_application: str = Field(min_length=1, max_length=100)
+    allowed_applications: list[Literal["whatsapp"]] = Field(default_factory=list, max_length=1)
+    handoff_from_scope_id: UUID | None = None
+
+
 class TurnRequest(Contract):
     schema_version: Literal[1] = 1
     request_id: UUID
     session_version: int = Field(ge=0)
     observation: Observation
-    event_kind: Literal["start", "activity", "i_did_this", "reobserve", "resume", "recover", "demonstration_result", "autonomous_result", "locate"]
+    event_kind: Literal["start", "activity", "i_did_this", "reobserve", "resume", "recover", "replan", "app_handoff", "demonstration_result", "autonomous_result", "locate"]
     previous_step: GuidanceStep | None = None
+    task_context: TaskContext | None = None
 
 
 class ProviderResult(Contract):

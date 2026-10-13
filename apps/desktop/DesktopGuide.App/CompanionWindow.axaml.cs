@@ -1,6 +1,9 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Media;
+using Avalonia.Threading;
+using System.Diagnostics;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DesktopGuide.Core;
@@ -12,11 +15,16 @@ public sealed partial class CompanionWindow : Window
     private bool expanded;
     private MainViewModel? observed;
     private PhysicalRect? activeTarget;
+    private readonly DispatcherTimer presentationTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
+    private Action? settlePresentation;
+    private TaskCompletionSource presentationSettled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public Task WhenPresentationSettled => presentationSettled.Task;
     public event Action? PanelRequested;
     public event Action? ReturnToTask;
     public CompanionWindow()
     {
         InitializeComponent();
+        presentationSettled.TrySetResult();
         ToggleButton.Click += (_, _) => { if (expanded) Collapse(); else Expand(); };
         BlobVoiceButton.Click += async (_, _) => { Expand(); if (observed is not null) await observed.TogglePromptVoiceCommand.ExecuteAsync(null); };
         PromptBlobButton.Click += async (_, _) => { if (observed is not null) await observed.TogglePromptVoiceCommand.ExecuteAsync(null); };
@@ -38,38 +46,85 @@ public sealed partial class CompanionWindow : Window
             if (observed is not null) observed.PropertyChanged += ModelChanged;
             UpdateCompact();
         };
-        Closed += (_, _) => { if (observed is not null) observed.PropertyChanged -= ModelChanged; };
+        Closed += (_, _) => { FinishPresentation(); if (observed is not null) observed.PropertyChanged -= ModelChanged; };
     }
     private void ModelChanged(object? sender, PropertyChangedEventArgs args)
     {
+        if (args.PropertyName == nameof(MainViewModel.ReducedMotion) && observed?.ReducedMotion == true) FinishPresentation();
         if (args.PropertyName is nameof(MainViewModel.HasCompactCard) or nameof(MainViewModel.HasNotice) or nameof(MainViewModel.IsPaused)) UpdateCompact();
     }
     private void UpdateCompact()
     {
-        CompactBody.IsVisible = !expanded && observed?.HasCompactCard == true;
         if (expanded) return;
-        var hasCard = CompactBody.IsVisible;
-        CompanionFrame.IsVisible = expanded || hasCard;
-        BlobLauncher.IsVisible = !expanded && !hasCard;
-        var width = hasCard ? 374 : 164;
-        var height = hasCard ? (observed!.IsPaused ? 400 : observed.HasNotice ? 340 : 270) : 180;
-        if (Width != width || Height != height) { Width = width; Height = height; Place(); }
+        Present(false);
     }
     private async Task RunOnTask(Func<MainViewModel, IAsyncRelayCommand> command)
     {
         if (DataContext is not MainViewModel vm) return;
-        Collapse(); ReturnToTask?.Invoke(); await command(vm).ExecuteAsync(null);
+        Collapse(false); ReturnToTask?.Invoke(); await command(vm).ExecuteAsync(null);
     }
     public void Expand(bool activate = true)
     {
-        expanded = true; ExpandedBody.IsVisible = true; CompactBody.IsVisible = false; CompanionFrame.IsVisible = true; BlobLauncher.IsVisible = false; Width = 374;
-        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
-        Height = Math.Min(760, (screen?.WorkingArea.Height ?? 800) / (screen?.Scaling ?? 1) - 32);
-        Place(); Show(); if (activate) { Activate(); if (DataContext is MainViewModel { HasLesson: false }) PromptBox.Focus(); }
+        if (!expanded) { FinishPresentation(); expanded = true; Present(true); }
+        Show(); if (activate) { Activate(); if (DataContext is MainViewModel { HasLesson: false }) PromptBox.Focus(); }
     }
-    public void Collapse()
+    public void Collapse(bool animate = true)
     {
-        expanded = false; ExpandedBody.IsVisible = false; UpdateCompact();
+        FinishPresentation(); expanded = false; Present(animate);
+    }
+    private void FinishPresentation()
+    {
+        presentationTimer.Stop();
+        var settle = settlePresentation; settlePresentation = null; settle?.Invoke();
+    }
+    private void Present(bool animate)
+    {
+        FinishPresentation();
+        var hasCard = !expanded && observed?.HasCompactCard == true;
+        var showFrame = expanded || hasCard;
+        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+        var width = showFrame ? 374d : 164d;
+        var height = expanded ? Math.Min(760, (screen?.WorkingArea.Height ?? 800) / (screen?.Scaling ?? 1) - 32)
+            : hasCard ? (observed!.IsPaused ? 400d : observed.HasNotice ? 340d : 270d) : 216d;
+        void ApplyBodies() { ExpandedBody.IsVisible = expanded; CompactBody.IsVisible = hasCard; }
+        var incoming = showFrame ? (Control)CompanionFrame : BlobLauncher;
+        var other = showFrame ? (Control)BlobLauncher : CompanionFrame;
+        var outgoing = other.IsVisible ? other : null;
+        var canAnimate = animate && IsVisible && observed?.ReducedMotion != true;
+        presentationSettled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Settle()
+        {
+            ApplyBodies(); CompanionFrame.IsVisible = showFrame; BlobLauncher.IsVisible = !showFrame;
+            CompanionFrame.Opacity = BlobLauncher.Opacity = 1;
+            CompanionFrame.RenderTransform = BlobLauncher.RenderTransform = null;
+            Width = width; Height = height; Place(); presentationSettled.TrySetResult();
+        }
+        if (!canAnimate) { Settle(); return; }
+        settlePresentation = Settle;
+        var fromWidth = Width; var fromHeight = Height;
+        // Keep the idle blob at its original bottom-right anchor while the deck
+        // slides and fades around it. Only resize the native surface after fading.
+        if (outgoing is not null) { Width = Math.Max(fromWidth, width); Height = Math.Max(fromHeight, height); Place(); }
+        if (showFrame) ApplyBodies(); // Keep the old deck content during its closing fade.
+        incoming.IsVisible = true; incoming.Opacity = outgoing is null ? .8 : 0;
+        var slide = new TranslateTransform(24, 10); incoming.RenderTransform = slide;
+        var outgoingSlide = new TranslateTransform(); if (outgoing is not null) outgoing.RenderTransform = outgoingSlide;
+        var clock = Stopwatch.StartNew();
+        EventHandler? tick = null;
+        tick = (_, _) =>
+        {
+            var t = Math.Clamp(clock.Elapsed.TotalMilliseconds / 240, 0, 1);
+            var eased = 1 - Math.Pow(1 - t, 3);
+            incoming.Opacity = outgoing is null ? .8 + .2 * eased : eased;
+            slide.X = 24 * (1 - eased); slide.Y = 10 * (1 - eased);
+            if (outgoing is not null) { outgoing.Opacity = 1 - eased; outgoingSlide.X = -12 * eased; }
+            else { Width = fromWidth + (width - fromWidth) * eased; Height = fromHeight + (height - fromHeight) * eased; Place(); }
+            if (t >= 1) FinishPresentation();
+        };
+        presentationTimer.Tick += tick;
+        var finish = settlePresentation;
+        settlePresentation = () => { presentationTimer.Tick -= tick; finish!(); };
+        presentationTimer.Start();
     }
     public void AvoidTarget(PhysicalRect target)
     {

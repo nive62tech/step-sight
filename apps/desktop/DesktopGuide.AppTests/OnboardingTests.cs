@@ -11,6 +11,24 @@ namespace DesktopGuide.AppTests;
 
 public sealed class OnboardingTests
 {
+    [Fact] public async Task ExitRevokesConsentAndCancelsSignInBeforeRequestingApplicationShutdown()
+    {
+        using var f = new Fixture(); f.Login.Wait = true;
+        var signingIn = f.Vm.SignInCommand.ExecuteAsync(null);
+        var scope = Guid.NewGuid();
+        f.Controller.Permissions.GrantFromLocalConsent(scope, InteractionMode.Guide, true, true, false);
+        f.Vm.ObservationConsent = true; f.Vm.PointerConsent = true;
+        var exitRequested = false;
+        f.Vm.ExitRequested += () =>
+        {
+            Assert.Equal(LessonState.Stopped, f.Controller.State);
+            Assert.False(f.Vm.ObservationConsent); Assert.False(f.Vm.PointerConsent);
+            Assert.Throws<SafetyException>(() => f.Controller.Permissions.RequireObservation(scope));
+            exitRequested = true;
+        };
+        f.Vm.ExitAppCommand.Execute(null); await signingIn;
+        Assert.True(exitRequested); Assert.False(f.Vm.SignedIn); Assert.False(f.Vm.IsSigningIn);
+    }
     [Fact] public async Task StopImmediatelyClearsBusyAndLateOldTaskCannotCancelItsReplacement()
     {
         var launcher = new Launcher(); using var f = new Fixture(launcher);

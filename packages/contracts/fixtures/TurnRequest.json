@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "request_id": "33333333-3333-3333-3333-333333333333",
+  "session_version": 0,
+  "observation": {
+    "id": "44444444-4444-4444-4444-444444444444",
+    "captured_at": "2026-10-11T03:00:00+00:00",
+    "scope_id": "55555555-5555-5555-5555-555555555555",
+    "geometry_id": "66666666-6666-6666-6666-666666666666",
+    "image_width": 1200,
+    "image_height": 700,
+    "privacy_filtered": true
+  },
+  "event_kind": "start",
+  "previous_step": null,
+  "task_context": {
+    "current_application": "starting_window",
+    "allowed_applications": ["whatsapp"],
+    "handoff_from_scope_id": null
+  }
+}

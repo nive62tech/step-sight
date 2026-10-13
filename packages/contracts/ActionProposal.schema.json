@@ -70,6 +70,27 @@
       "title": "KeyAction",
       "type": "object"
     },
+    "OpenAppAction": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "open_app",
+          "title": "Kind",
+          "type": "string"
+        },
+        "application": {
+          "const": "whatsapp",
+          "title": "Application",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "application"
+      ],
+      "title": "OpenAppAction",
+      "type": "object"
+    },
     "ScrollAction": {
       "additionalProperties": false,
       "properties": {
@@ -151,6 +172,7 @@
         "mapping": {
           "click": "#/$defs/ClickAction",
           "key_chord": "#/$defs/KeyAction",
+          "open_app": "#/$defs/OpenAppAction",
           "scroll": "#/$defs/ScrollAction",
           "type": "#/$defs/TypeAction"
         },
@@ -168,6 +190,9 @@
         },
         {
           "$ref": "#/$defs/KeyAction"
+        },
+        {
+          "$ref": "#/$defs/OpenAppAction"
         }
       ],
       "title": "Action"

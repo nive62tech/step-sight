@@ -38,6 +38,7 @@ public sealed partial class MainViewModel : ObservableObject
     public string ModeLabel => IsAutonomous ? "Autonomous" : "Guided";
     public bool AutonomousModeSelected { get => IsAutonomous; set => SelectedTaskMode = value ? 1 : 0; }
     public event Action<CaptureSource>? GuideStarting;
+    public event Action? ExitRequested;
     public string BrandName { get; }
     public string BuildLabel { get; }
     public string EnvironmentLabel { get; }
@@ -59,7 +60,7 @@ public sealed partial class MainViewModel : ObservableObject
         ? "The agent clicks, scrolls and types, then checks each result using screenshots. Moving your mouse or typing pauses control."
         : "The agent shows where to click and explains each step. You control the mouse and keyboard.";
     public string TaskDisclosure => IsAutonomous
-        ? "Your prompt and live screenshots go to Gemini via AWS. Control stays in the task window for up to 30 actions or 10 minutes. Login, CAPTCHA, payments and final submissions need you."
+        ? "Your prompt and live screenshots go to Gemini via AWS. Control covers the starting window and WhatsApp Desktop when named in your task, for up to 30 actions or 10 minutes. Login, CAPTCHA, payments and sending need you."
         : "Your prompt and live screenshots go to Gemini via AWS. You click and type. Stop ends observation.";
     public string ResumeConsentLabel => IsAutonomous ? "Allow fresh screenshots and autonomous control of this task window" : "Allow a fresh image of this window";
     public string CurrentWindowLabel => IsAutonomous ? "Let agent act in this window" : "Help with this window";
@@ -100,7 +101,7 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool isBusy;
     [ObservableProperty] private int retryAttempt;
     public bool IsThinking => !IsPaused && (LessonState is LessonState.Observing or LessonState.Planning or LessonState.Verifying or LessonState.AnsweringQuestion || RetryAttempt > 0 || IsBusy && !HasLesson);
-    public string ThinkingLabel => RetryAttempt > 0 ? $"Rechecking live screen · retry {RetryAttempt}/3" : LessonState == LessonState.Verifying ? "Checking the result…" : "Analysing the live screen…";
+    public string ThinkingLabel => RetryAttempt > 0 ? $"Rechecking live screen · retry {RetryAttempt}/{LessonController.MaximumRecoveryAttempts}" : LessonState == LessonState.Verifying ? "Checking the result…" : "Analysing the live screen…";
     [ObservableProperty] private bool isServiceReady;
     [ObservableProperty] private string connectionStatus = "Sign in to connect your lessons.";
     [ObservableProperty] private bool resumeConsent;
@@ -182,6 +183,13 @@ public sealed partial class MainViewModel : ObservableObject
         activity.SessionUnavailable += () => ui(() => { DisablePhoneControl(); taskCancellation?.Cancel(); CancelVoicePrompt(); });
         controller.Presentation += (text, detail, state) => ui(() => { Instruction = text; Explanation = detail; Status = state; });
         controller.Notice += message => ui(() => Notice = message);
+        controller.TaskWindowChanged += next => ui(() =>
+        {
+            if (controller.State == LessonState.Stopped || controller.CurrentSource?.ScopeId != next.ScopeId) return;
+            updatingTaskWindow = true;
+            try { SelectedSource = next; PreviewImage?.Dispose(); PreviewImage = null; HasPreview = false; PreviewAccepted = false; }
+            finally { updatingTaskWindow = false; }
+        });
         controller.MarkerStateChanged += value => ui(() => GuideMarkerState = value);
         controller.Preview += frame => ui(() =>
         {
@@ -238,7 +246,8 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnPointerConsentChanged(bool value) => RefreshUi();
     partial void OnDemonstrationConsentChanged(bool value) => RefreshUi();
     partial void OnObservationConsentChanged(bool value) { if (!value) { HasPreview = false; PreviewAccepted = false; controller.StopLocal(); } RefreshUi(); }
-    partial void OnSelectedSourceChanged(CaptureSource? value) { InvalidatePreview(); RefreshUi(); }
+    private bool updatingTaskWindow;
+    partial void OnSelectedSourceChanged(CaptureSource? value) { if (!updatingTaskWindow) InvalidatePreview(); RefreshUi(); }
     partial void OnMasksChanged(string value) => InvalidatePreview();
     partial void OnSelectedLessonChoiceChanged(LessonChoice? value)
     {
@@ -425,6 +434,7 @@ public sealed partial class MainViewModel : ObservableObject
         Notice = ""; Status = "Stopped · permissions cleared"; RefreshUi();
     }
     [RelayCommand] private void Stop() { DisablePhoneControl(); StopTask(); }
+    [RelayCommand] private void ExitApp() { Stop(); ExitRequested?.Invoke(); }
     [RelayCommand] private void Pause() => controller.PauseLocal();
     [RelayCommand(AllowConcurrentExecutions = true)] private Task Resume() => Run(async () =>
     {

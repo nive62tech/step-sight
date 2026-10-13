@@ -6,6 +6,83 @@ namespace DesktopGuide.Tests;
 
 public sealed class ControllerTests
 {
+    [Fact]
+    public async Task LostHandoffResponseRetriesObservationWithoutOpeningAppAgain()
+    {
+        var env = new Environment { MultiAppTask = true, AppHandoffFailures = 1 }; using var c = env.Controller();
+        await c.PreviewAsync(env.Source);
+        await c.StartAsync(env.Source,"Copy the meeting link, open WhatsApp and search for Sample Contact","browser",InteractionMode.Autonomous,false,false,false,true);
+        Assert.Equal(1,env.AppLaunches); Assert.Equal(2,env.Events.Count(e => e == "app_handoff"));
+        Assert.Equal(LessonState.Completed,c.State);
+    }
+    [Fact]
+    public async Task StopDuringApplicationHandoffRejectsLateWindowAndFurtherInput()
+    {
+        var env = new Environment { MultiAppTask = true, BlockHandoff = true }; using var c = env.Controller();
+        await c.PreviewAsync(env.Source);
+        var starting = c.StartAsync(env.Source,"Copy meeting link then open WhatsApp and search for Sample Contact","browser",InteractionMode.Autonomous,false,false,false,true);
+        await env.HandoffEntered.Task.WaitAsync(TimeSpan.FromSeconds(4)); c.StopLocal();
+        env.ContinueHandoff.TrySetResult(); await starting;
+        Assert.Equal(1,env.AppLaunches); Assert.Equal(LessonState.Stopped,c.State);
+        Assert.DoesNotContain("app_handoff",env.Events); Assert.Equal(2,env.Dispatches);
+        Assert.Equal(0,env.Permissions.AutonomousActionsRemaining);
+    }
+    [Fact]
+    public async Task PopupCycleOnChangingImagesReplansTwelveTimesWithoutMoreClicks()
+    {
+        var env = new Environment { CycleTask = true }; using var c = env.Controller();
+        await c.PreviewAsync(env.Source);
+        await c.StartAsync(env.Source,"Create a meeting and continue the task","browser",InteractionMode.Autonomous,false,false,false,true);
+        Assert.Equal(12,env.Events.Count(e => e == "replan")); Assert.Equal(5,env.Dispatches);
+        Assert.Equal(LessonState.Paused,c.State);
+    }
+    [Fact]
+    public async Task MeetingCopyHandsOffToWhatsAppSearchWithoutRestartingGoal()
+    {
+        var env = new Environment { MultiAppTask = true }; using var c = env.Controller();
+        var original = env.Source; var windows = new List<CaptureSource>(); c.TaskWindowChanged += windows.Add;
+        await c.PreviewAsync(original);
+        await c.StartAsync(original,"Create a meeting, copy its link, open WhatsApp Desktop and search for Sample Contact","browser",InteractionMode.Autonomous,false,false,false,true);
+        Assert.Equal(LessonState.Completed,c.State); Assert.Equal(1,env.AppLaunches);
+        Assert.Equal(new[] {"click","open_app","click","type"},env.DispatchedKinds);
+        Assert.Equal(new[] {"start","autonomous_result","app_handoff","autonomous_result","autonomous_result"},env.Events);
+        Assert.Single(windows); Assert.NotEqual(original.ScopeId,windows[0].ScopeId);
+        Assert.Equal(InteractionMode.Autonomous,c.Mode);
+        Assert.Equal(1,env.Creates);
+        Assert.Throws<SafetyException>(() => env.Permissions.RequireObservation(original.ScopeId));
+    }
+    [Fact]
+    public async Task ModelCannotOpenWhatsAppUnlessUserNamedItInTheTask()
+    {
+        var env = new Environment { MultiAppTask = true }; using var c = env.Controller();
+        await c.PreviewAsync(env.Source);
+        await c.StartAsync(env.Source,"Create a meeting and copy its link","browser",InteractionMode.Autonomous,false,false,false,true);
+        Assert.Equal(0,env.AppLaunches); Assert.Equal(LessonState.Paused,c.State);
+    }
+    [Fact]
+    public async Task TwelveUndispatchedAttemptsRecoverAndThirteenthRecoveryIsNotRequested()
+    {
+        var env = new Environment { DeferInputs = 12, CompleteAfter = 1 }; using var c = env.Controller();
+        await c.PreviewAsync(env.Source);
+        await c.StartAsync(env.Source,"Create a meeting link","browser",InteractionMode.Autonomous,false,false,false,true);
+        Assert.Equal(12,env.Events.Count(e => e == "recover")); Assert.Equal(1,env.Dispatches);
+        Assert.Equal(LessonState.Completed,c.State); Assert.Equal(12,LessonController.MaximumRecoveryAttempts);
+    }
+    [Fact]
+    public async Task GuideRequestCannotInterruptAutonomousDispatch()
+    {
+        var env = new Environment { CompleteAfter = 1 }; using var c = env.Controller();
+        var requested = false; Task? guide = null;
+        c.StateChanged += state =>
+        {
+            if (state == LessonState.WaitingForLearner && !requested) { requested = true; guide = c.ShowWhereAsync(); }
+        };
+        await c.PreviewAsync(env.Source);
+        await c.StartAsync(env.Source,"Create a meeting link","browser",InteractionMode.Autonomous,false,false,false,true);
+        Assert.True(requested); await guide!;
+        Assert.Equal(0,env.VisualMarkers); Assert.Equal(0,env.PointerMoves);
+        Assert.Equal(1,env.Dispatches); Assert.Equal(LessonState.Completed,c.State);
+    }
     [Fact] public async Task UndispatchedClicksRecoverWithoutRequestingManualCompletionOrCountingAsRepeatedActions()
     {
         var env = new Environment { DeferInputs = 3, CompleteAfter = 1 }; using var c = env.Controller();
@@ -90,7 +167,7 @@ public sealed class ControllerTests
         var env = new Environment { MissingTarget = true, Verify = "NOT_YET" }; using var c = env.Controller();
         await c.PreviewAsync(env.Source);
         await c.StartAsync(env.Source, "Find trains", "browser", InteractionMode.Autonomous, false, false, false, true);
-        Assert.Equal(new[] { "start", "recover", "recover", "recover" }, env.Events);
+        Assert.Equal(new[] { "start" }.Concat(Enumerable.Repeat("recover",LessonController.MaximumRecoveryAttempts)), env.Events);
         Assert.Equal(0, env.Dispatches); Assert.Equal(LessonState.Paused, c.State);
     }
     [Fact]
@@ -120,7 +197,7 @@ public sealed class ControllerTests
         await c.StartAsync(env.Source, "Open preferences", "browser", InteractionMode.Autonomous, false, false, false, true);
         Assert.Equal(LessonState.Paused, c.State); Assert.Equal(0, env.Dispatches);
         Assert.False(env.AutonomousControlActive); Assert.False(env.ObservationEnabled);
-        Assert.InRange(env.Turns, 1, 4);
+        Assert.InRange(env.Turns, 1, LessonController.MaximumRecoveryAttempts + 1);
     }
     [Theory] [InlineData("NOT_YET")] [InlineData("DIFFERENT_STATE")] [InlineData("UNCERTAIN")]
     public async Task UnknownDispatchIsVerifiedOnceAndNeverRetried(string verification)
@@ -159,7 +236,7 @@ public sealed class ControllerTests
         Assert.Equal(LessonState.Completed, c.State); Assert.Equal(1, env.Dispatches);
     }
     private sealed class Environment : IScreenCapture, IWindowTracker, IUserActivityObserver, IPointerGuide, IInputExecutor,
-        IGuidanceApiClient, ILocalSessionStore, IAudioCapture, ISpeechPlayback, IBrowserTargetResolver
+        IGuidanceApiClient, ILocalSessionStore, IAudioCapture, ISpeechPlayback, IBrowserTargetResolver, IApplicationHandoff
     {
         public CaptureSource Source = new(Guid.NewGuid(), Guid.NewGuid(), "Desktop Guide Training Sandbox", "window");
         public ScreenFrame Frame;
@@ -170,6 +247,23 @@ public sealed class ControllerTests
         public bool BlockTurn;
         public int CompleteAfter;
         public int DeferInputs;
+        public bool MultiAppTask;
+        public bool CycleTask, BlockHandoff;
+        public int AppHandoffFailures;
+        public TaskCompletionSource HandoffEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ContinueHandoff = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int AppLaunches, Creates;
+        public IReadOnlyList<string> SupportedApplications => ["whatsapp"];
+        public async Task<ApplicationHandoffResult> OpenAsync(LocalCapability capability, ActionProposal proposal, ScreenFrame frame,CaptureSource source,CancellationToken cancellation)
+        {
+            var lease = Permissions.Consume(capability,proposal,frame,true);
+            Permissions.ExecuteBatch(lease,frame,true,() => { AppLaunches++; Dispatches++; DispatchedKinds.Add("open_app"); });
+            HandoffEntered.TrySetResult(); if (BlockHandoff) await ContinueHandoff.Task;
+            Source = new(Guid.NewGuid(),Guid.NewGuid(),"WhatsApp Desktop","window");
+            var geometry = Frame.Geometry with { Id=Guid.NewGuid(),ScopeId=Source.ScopeId,LocalTargetId=Source.TargetId };
+            Frame = Frame with { Geometry=geometry,Observation=Frame.Observation with { ScopeId=Source.ScopeId,GeometryId=geometry.Id },PixelDigest="WhatsApp" };
+            return new(Source,lease);
+        }
         public bool ManualStep, InvalidEvidence, ChangeBeforeDispatch;
         public bool BannerRecovery, FreshResume;
         public List<string> DispatchedKinds = [];
@@ -237,11 +331,13 @@ public sealed class ControllerTests
             var lease = Permissions.Consume(capability, proposal, frame, true);
             if (DeferInputs-- > 0) return Task.FromResult(new ActionReceipt(proposal.Id,"not_dispatched",Permissions.Epoch));
             Permissions.ExecuteBatch(lease, frame, true, () => { Dispatches++; DispatchedKinds.Add(proposal.Action.Kind); });
+            if (CycleTask) Frame = Frame with { PixelDigest=Guid.NewGuid().ToString() };
             return Task.FromResult(new ActionReceipt(proposal.Id, Outcome, Permissions.Epoch));
         }
         public void ReleaseHeldControls() { }
         public Task<SessionView> CreateAsync(SessionCreate request, CancellationToken cancellation)
         {
+            Creates++;
             Session = new(1, Guid.NewGuid(), request.DeviceId, request.Goal, request.Mode, "en", "standard", request.ScopeId, 0, "OBSERVING", "sandbox", false, 0, DateTimeOffset.UtcNow, "gemini", null);
             return Task.FromResult(Session);
         }
@@ -249,6 +345,27 @@ public sealed class ControllerTests
         public async Task<TurnResponse> TurnAsync(Guid session, TurnRequest request, ScreenFrame frame, CancellationToken cancellation)
         {
             Turns++; Observations.Add(frame.Observation.Id); Events.Add(request.EventKind);
+            if (MultiAppTask)
+            {
+                if (request.EventKind == "app_handoff" && AppHandoffFailures-- > 0) throw new TransientGuidanceException("Lost app handoff response");
+                var action = Dispatches switch { 1 => new InputAction("open_app",Application:"whatsapp"),3 => new InputAction("type",Text:"Sample Contact"),_ => new InputAction("click",.55,.55,"left") };
+                var taskComplete = Dispatches == 4;
+                var taskStep = new GuidanceStep(Guid.NewGuid(),frame.Observation.Id,
+                    Dispatches switch { 0 => "Copy meeting link",1 => "Open WhatsApp Desktop",2 => "Click chat search",_ => "Search for Sample Contact" },
+                    "Continue the remaining part of the task",action.Kind == "open_app" ? null : new("rectangle","normalized_source_image",frame.Geometry.Id,new(.5,.5,.6,.6),"Search"),
+                    action.Kind,[new("visible_state",Dispatches == 1 ? "WhatsApp Desktop visible" : "Task step visible")],[],[new(frame.Observation.Id,"Visible fixture")],[]);
+                if (request.EventKind == "app_handoff")
+                {
+                    Assert.NotNull(request.TaskContext!.HandoffFromScopeId); Assert.Equal("whatsapp",request.TaskContext.CurrentApplication);
+                    Assert.Contains("whatsapp",request.TaskContext.AllowedApplications);
+                    Assert.NotEqual(Session.ScopeId,request.Observation.ScopeId);
+                }
+                Pending = taskComplete ? null : taskStep;
+                Session = Session with { SessionVersion=request.SessionVersion+1,ScopeId=request.Observation.ScopeId,PendingStep=Pending };
+                return new(1,session,Session.SessionVersion,Guid.NewGuid(),frame.Observation.Id,"gemini",Pending,
+                    request.PreviousStep is null ? null : new("CONFIRMED",[new(frame.Observation.Id,"Visible result")],[],null,"gemini"),
+                    taskComplete ? null : new(Guid.NewGuid(),frame.Observation.Id,frame.Geometry.Id,action,"Continue task","low",false),taskComplete);
+            }
             if (TransientFailures-- > 0) throw new TransientGuidanceException("Synthetic disconnect"); TurnEntered.TrySetResult(true);
             if (ServiceTimeout) throw new TaskCanceledException("Synthetic HTTP deadline");
             if (BlockTurn) await ContinueTurn.Task; // Deliberately ignore cancellation to exercise late-response defense.
@@ -264,6 +381,8 @@ public sealed class ControllerTests
             }
             var step = new GuidanceStep(Guid.NewGuid(), frame.Observation.Id, "Open Settings", "Change practice preferences",
                 new("rectangle", "normalized_source_image", frame.Geometry.Id, new(.5, .5, .6, .6), "Settings"), "click", [new("visible_text", "Settings")], [], [new(frame.Observation.Id, "Settings visible")], []);
+            if (CycleTask) step = step with { Instruction=Dispatches%3 == 0 ? "Open popup" : Dispatches%3 == 1 ? "Copy link" : "Close popup",
+                Target=step.Target! with { VisibleLabel=Dispatches%3 == 0 ? "Open" : Dispatches%3 == 1 ? "Copy" : "Close" } };
             if (MissingTarget) step = step with { Target = null };
             if (WaitingForPage) step = step with { Target = null, ExpectedUserAction = "wait", Instruction = "Wait for the dashboard to load" };
             if (ManualStep) step = step with { ExpectedUserAction = "manual", Instruction = "Complete CAPTCHA yourself" };
@@ -304,7 +423,7 @@ public sealed class ControllerTests
         public void Play(byte[] wav) { }
         public void Stop() { }
         public void Dispose() { }
-        public LessonController Controller(bool browser = false) => new(this, this, this, this, this, this, this, this, this, Permissions, browser ? this : null);
+        public LessonController Controller(bool browser = false) => new(this, this, this, this, this, this, this, this, this, Permissions, browser ? this : null,this);
     }
     [Fact]
     public async Task BrowserGroundingCorrectsOnlyTheMarkerWithoutChangingServerStepOrInputProposal()

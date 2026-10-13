@@ -78,11 +78,37 @@ internal static class UiCheck
                     await Task.Delay(150);
                     using var companionBitmap = new RenderTargetBitmap(new PixelSize((int)companion.Width,(int)companion.Height),new Vector(96,96));
                     companionBitmap.Render(companion); companionBitmap.Save(Path.Combine(directory,$"companion-{scene}.png"),PngBitmapEncoderOptions.Default);
-                    companion.Collapse(); await Task.Delay(100);
+                    companion.Collapse(); await companion.WhenPresentationSettled;
                     if (vm.HasLesson && (companion.Height <= 72 || !companion.FindControl<ScrollViewer>("CompactBody")!.IsVisible))
                         throw new InvalidOperationException("The active instruction must stay visible in the collapsed companion.");
                     using var dockBitmap = new RenderTargetBitmap(new PixelSize((int)companion.Width,(int)companion.Height),new Vector(96,96));
                     dockBitmap.Render(companion); dockBitmap.Save(Path.Combine(directory,$"dock-{scene}.png"),PngBitmapEncoderOptions.Default);
+                    if (Program.Arguments.Contains("--companion-motion-check"))
+                    {
+                        vm.ReducedMotion = false;
+                        companion.Expand(false);
+                        if (companion.WhenPresentationSettled.IsCompleted) throw new InvalidOperationException("Opening did not animate.");
+                        await Task.Delay(80);
+                        using (var opening = new RenderTargetBitmap(new PixelSize((int)companion.Width,(int)companion.Height),new Vector(96,96)))
+                        { opening.Render(companion); opening.Save(Path.Combine(directory,"deck-opening.png"),PngBitmapEncoderOptions.Default); }
+                        await companion.WhenPresentationSettled;
+                        if (!companion.FindControl<ScrollViewer>("ExpandedBody")!.IsVisible || companion.FindControl<StackPanel>("BlobLauncher")!.IsVisible)
+                            throw new InvalidOperationException("Opening did not finish at the expanded deck.");
+                        companion.Collapse();
+                        if (companion.WhenPresentationSettled.IsCompleted) throw new InvalidOperationException("Closing did not animate.");
+                        await Task.Delay(80);
+                        using (var closing = new RenderTargetBitmap(new PixelSize((int)companion.Width,(int)companion.Height),new Vector(96,96)))
+                        { closing.Render(companion); closing.Save(Path.Combine(directory,"deck-closing.png"),PngBitmapEncoderOptions.Default); }
+                        await companion.WhenPresentationSettled;
+                        companion.Expand(false); companion.Collapse(); companion.Expand(false); await companion.WhenPresentationSettled;
+                        if (!companion.FindControl<ScrollViewer>("ExpandedBody")!.IsVisible) throw new InvalidOperationException("Rapid toggles settled at the wrong presentation.");
+                        vm.ReducedMotion = true; companion.Collapse();
+                        if (!companion.WhenPresentationSettled.IsCompleted) throw new InvalidOperationException("Reduced motion still animated.");
+                        await File.WriteAllTextAsync(Path.Combine(directory,"companion-motion-check.json"),JsonSerializer.Serialize(new {
+                            result="passed", scope="headless Avalonia with synthetic viewmodel; no native capture/input or network",
+                            opening=true, closing=true, rapid_toggle=true, reduced_motion=true, exit_command_available=vm.ExitAppCommand.CanExecute(null)
+                        }));
+                    }
                     companion.Close();
                     var outline = HighlightWindow.CreateOutline(); HighlightWindow.ApplyMode(outline, vm.IsAutonomous); outline.Width = 200; outline.Height = 64;
                     outline.Measure(new Size(200,64)); outline.Arrange(new Rect(0,0,200,64));
@@ -90,7 +116,9 @@ internal static class UiCheck
                     outlineBitmap.Render(outline); outlineBitmap.Save(Path.Combine(directory,"target-outline.png"),PngBitmapEncoderOptions.Default);
                 }
                 if (auth) await login.SignOutAsync();
-                desktop.Shutdown(); services.Dispose();
+                if (Program.Arguments.Contains("--companion-motion-check")) vm.ExitAppCommand.Execute(null);
+                else desktop.Shutdown();
+                services.Dispose();
             },TimeSpan.FromMilliseconds(500));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -120,7 +148,7 @@ internal static class UiCheck
             {
                 vm.ActiveView = "lesson"; vm.LessonState = LessonState.Planning; vm.IsBusy = true;
                 vm.Status = "Analysing the live screen…"; vm.RetryAttempt = 2;
-                vm.Instruction = "Reading the updated page"; vm.Notice = "Analysis interrupted · retry 2/3. Reading a fresh screen…";
+                vm.Instruction = "Reading the updated page"; vm.Notice = $"Analysis interrupted · retry 2/{LessonController.MaximumRecoveryAttempts}. Reading a fresh screen…";
             }
         }
         if (scene.EndsWith("listening", StringComparison.Ordinal)) { vm.VoiceListening = true; vm.VoiceStatus = "Listening... click Finish when you're done."; }

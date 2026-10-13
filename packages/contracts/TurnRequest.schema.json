@@ -100,6 +100,7 @@
             "type",
             "scroll",
             "key_chord",
+            "open_app",
             "manual",
             "wait"
           ],
@@ -269,6 +270,44 @@
       ],
       "title": "Target",
       "type": "object"
+    },
+    "TaskContext": {
+      "additionalProperties": false,
+      "properties": {
+        "current_application": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Current Application",
+          "type": "string"
+        },
+        "allowed_applications": {
+          "items": {
+            "const": "whatsapp",
+            "type": "string"
+          },
+          "maxItems": 1,
+          "title": "Allowed Applications",
+          "type": "array"
+        },
+        "handoff_from_scope_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Handoff From Scope Id"
+        }
+      },
+      "required": [
+        "current_application"
+      ],
+      "title": "TaskContext",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -300,6 +339,8 @@
         "reobserve",
         "resume",
         "recover",
+        "replan",
+        "app_handoff",
         "demonstration_result",
         "autonomous_result",
         "locate"
@@ -311,6 +352,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/GuidanceStep"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "task_context": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TaskContext"
         },
         {
           "type": "null"

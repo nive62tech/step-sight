@@ -74,14 +74,16 @@ public static class WindowStyles
     {
         var style = Native.GetWindowLongPtr(handle, -20).ToInt64();
         Native.SetWindowLongPtr(handle, -20, (nint)(style | 0x20 | 0x08000000 | 0x80));
-        Native.SetWindowDisplayAffinity(handle, 0x11);
+        ShowInRecordings(handle);
     }
-    public static bool ExcludeFromCapture(nint handle) => Native.SetWindowDisplayAffinity(handle, 0x11);
+    // Display affinity is global to all recorders. Assistant screenshot isolation is
+    // handled by WGC window capture / local monitor masks, never by hiding our UI.
+    public static bool ShowInRecordings(nint handle) => Native.SetWindowDisplayAffinity(handle, 0);
     public static void ConfigureApproval(nint handle)
     {
         var style = Native.GetWindowLongPtr(handle, -20).ToInt64();
         Native.SetWindowLongPtr(handle, -20, (nint)(style | 0x08000000 | 0x80));
-        Native.SetWindowDisplayAffinity(handle, 0x11);
+        ShowInRecordings(handle);
     }
     public static void EnableDpiAwareness() => Native.SetProcessDpiAwarenessContext((nint)(-4));
 }

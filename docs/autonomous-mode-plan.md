@@ -5,7 +5,7 @@ Implemented in the 11 October 2026 r14 pilot. The user selects **Guided ? I clic
 ## Shipped behavior
 
 - The existing Gemini intent planner can open a browser and starting website from the prompt. For an existing Windows application, summon the companion with Ctrl+Alt+Space or select and preview its window.
-- An autonomous grant covers that one window for 10 minutes or 30 dispatch attempts. The controller observes, proposes one action, validates it locally, executes it and requests a fresh screenshot to verify the outcome before continuing.
+- An autonomous grant covers the starting window and installed WhatsApp Desktop when explicitly named in the prompt, for 10 minutes or 30 dispatch attempts across the whole task. Handoffs consume an exact local action lease and preserve the original budget/expiry. The controller observes, proposes one action, validates it locally, executes it and requests a fresh screenshot to verify the outcome before continuing.
 - Gemini 3.1 Flash-Lite plans and verifies. Each autonomous click receives a second coordinate proposal from the dedicated Gemini 3.5 Flash-Lite computer-use locator. Both inference calls share the turn deadline and are individually usage-accounted. Neither model executes tools directly.
 - Decisions use screenshots only. Browser UIA/DOM inspection remains disabled. There are no site-specific click scripts or stored target coordinates.
 - Supported inputs are left click, bounded vertical scrolling, bounded Unicode text, and allowlisted navigation keys. Typing requires an identified focused field. Every action uses an exact single-use local capability bound to the image, geometry, target, scope and current permission epoch.
@@ -15,9 +15,9 @@ Implemented in the 11 October 2026 r14 pilot. The user selects **Guided ? I clic
 
 ## Scope and remaining work
 
-This is autonomous execution within one selected/opened window, not unrestricted control across the whole desktop. The prompt launcher still launches browsers; native apps must currently be opened and selected/summoned first. An already-open Settings window can receive screenshot-based navigation proposals, but exact brightness adjustment and real IRCTC availability searches have not been qualified end to end. No native brightness API or programmatic website inspection is used.
+The r20 task can move from its starting window into WhatsApp Desktop when the prompt explicitly names it, while preserving the same goal, session, verified history and mode. It is bounded to those task windows. The prompt launcher still launches browsers; other native apps must be opened and selected/summoned first. An already-open Settings window can receive screenshot-based navigation proposals, but exact brightness adjustment and real IRCTC availability searches have not been qualified end to end. No native brightness API or programmatic website inspection is used.
 
-New windows, elevation, terminal commands, clipboard extraction, arbitrary shell execution, file uploads, drag gestures and secrets are outside this pilot's autonomous primitives. A task that needs an unsupported action or a new window pauses for the user. Wider application launch/window handoff requires another design and test pass.
+The r20 `open_app` primitive can launch the known WhatsApp Store package without arguments and rebind to its exact focused window. Other new windows, elevation, terminal commands, clipboard extraction, arbitrary shell execution, file uploads, drag gestures and secrets remain outside the supported primitives. A task that needs an unsupported action or a new window pauses for the user. Other application launch/window handoffs remain unimplemented.
 
 ## Evidence
 

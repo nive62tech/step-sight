@@ -37,7 +37,7 @@ class VisualStep(Contract):
     instruction: str = Field(min_length=1, max_length=1000)
     explanation: str = Field(max_length=1500)
     target: VisualTarget | None = None
-    expected_user_action: Literal["click", "type", "scroll", "key_chord", "manual", "wait"]
+    expected_user_action: Literal["click", "type", "scroll", "key_chord", "open_app", "manual", "wait"]
     postconditions: list[Postcondition] = Field(min_length=1, max_length=5)
     evidence: list[Detail] = Field(min_length=1, max_length=5)
     uncertainty: list[Detail] = Field(default_factory=list, max_length=5)

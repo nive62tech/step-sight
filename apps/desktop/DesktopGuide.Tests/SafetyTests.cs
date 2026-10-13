@@ -5,6 +5,22 @@ namespace DesktopGuide.Tests;
 
 public sealed class SafetyTests
 {
+    [Fact]
+    public void ApplicationHandoffInvalidatesOldWindowLeasesAndKeepsTaskBudgetAndExpiry()
+    {
+        var (_,frame,proposal) = Setup(); var clock = new ManualClock(); var supervisor = new PermissionSupervisor(clock);
+        supervisor.GrantAutonomousTaskFromLocalConsent(frame.Observation.ScopeId,frame.Geometry.LocalTargetId,true);
+        proposal = proposal with { Action=new("open_app",Application:"whatsapp") };
+        var cap = supervisor.ApproveAutonomousAction(proposal,frame);
+        var lease = supervisor.Consume(cap,proposal,frame,true);
+        var scope = Guid.NewGuid(); var target = Guid.NewGuid();
+        supervisor.RebindAutonomousScope(lease,scope,target);
+        Assert.Equal(29,supervisor.AutonomousActionsRemaining);
+        Assert.Throws<SafetyException>(() => supervisor.ExecuteBatch(lease,frame,true,() => throw new Exception("Old window input")));
+        supervisor.RequireAutonomousTask(scope,target);
+        clock.Current += TimeSpan.FromMinutes(10);
+        Assert.Throws<SafetyException>(() => supervisor.RequireAutonomousTask(scope,target));
+    }
     [Theory] [InlineData(false)] [InlineData(true)]
     public void ReadingABannerCanScrollButSensitiveActionsStillNeedAUser(bool manualRisk)
     {

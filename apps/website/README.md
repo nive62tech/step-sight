@@ -1,6 +1,33 @@
 # Desktop Guide website
 
-A static, dependency-free product landing page with CSS 3D, an explicitly illustrative interactive demo, keyboard-accessible workflow tabs, reduced-motion support, and a generated release archive. Fonts are served locally under the included SIL Open Font License. The website never captures a screen or connects to the pilot API.
+A static, dependency-free product website with a six-chapter presentation view, three illustrative task walkthroughs, keyboard-accessible scenario tabs, reduced-motion support, and a generated release archive. Fonts are served locally under the included SIL Open Font License. The website never captures a screen or connects to the pilot API.
+
+## Presentation website
+
+The current source introduces Desktop Guide, explains the friction it addresses, demonstrates everyday possibilities, explains onboarding and the two modes, and provides the Windows download. Select **Present** to show one chapter at a time. Use the visible Previous/Next controls or Left/Right, Page Up/Page Down, Home/End keys; **Escape** exits. Arrow keys inside the scenario tabs select scenarios instead of changing chapters. This view does not request browser fullscreen access. On smaller screens, each chapter remains scrollable.
+
+The three four-step examples are **Meet & share** (create a meeting, copy its link, open WhatsApp, review a message to Amal), **Tatkal booking** (route, search preferences, availability review, manual confirmation), and **Plan your day** (create an event, details, reminder, final review). They use local authored data and explicitly identify manual handoffs. No real message, booking, meeting, calendar event or clipboard transfer happens. The scheduling example does not imply an unattended scheduler. Signed-in provider workflows remain unqualified.
+
+The generated release archive and manifest validation are unchanged. The source uses the current manifest at build time, including concurrent release updates; it does not pin a release version in marketing copy. Downloads, release notes, checksums, product copy and FAQs remain available without JavaScript.
+
+The sections below include historical deployment and design evidence. The presentation redesign is a local source change until separately approved for deployment.
+
+### Presentation design and verification
+
+Five built-in Image Gen concept briefs established the complete page: (1) a charcoal/citron editorial hero and calendar companion, (2) three open problem/solution rows, (3) a tabbed meeting/Tatkal/calendar walkthrough, (4) numbered onboarding and green/coral mode panels, and (5) the download, release history and FAQs. The implementation uses semantic HTML/CSS rather than rasterized interface controls.
+
+| Visual comparison | Implemented result |
+| --- | --- |
+| Palette and typography | Kept near-black, warm white, citron and Manrope; increased the hero and interface type after reviewing native-size browser screenshots. |
+| Hero composition | Preserved the three-line headline, two actions, calendar and overlapping companion; moved the companion so the meeting target remains readable. |
+| Content and section rhythm | Kept the problem rows, scenario workspace, numbered steps, mode panels and restrained download area. |
+| Icons and containers | Used consistent outline value icons, thin section rules and framing only where it clarifies the example or download. |
+| Presentation and responsive layout | Verified all six chapters, tab keyboard isolation, Escape, mobile stacking and absence of horizontal overflow from 320px to 1505px. Adjusted demo spacing to leave the presentation controls clear. |
+| Copy and product truth | Main headline, navigation and CTA copy match the brief. Removed invented dates, usable-looking provider URLs and decorative OS art from the concepts. Added current pilot limits, manual handoffs, phone control and account requirements. |
+
+Local validation: five release tests and the static build passed; the build verified all five current ZIPs against their manifest sizes and hashes. Headless Chromium checked all 12 scenario states, replay/restart, keyboard tabs, six presentation chapters, exit and boundary controls, release filtering, FAQs, all 11 download/checksum links, reduced motion and downloads with JavaScript disabled. No runtime errors or external requests were observed. Viewports were 1505×1045, 1440×1000, 1024×768, 768×1024, 390×844 and 320×760, with section comparisons at 1435×1100. The built-in browser returned “Browser is not available: iab”, so the existing local Playwright Chromium installation was used. The concepts and final captures were inspected with the image viewer.
+
+These are local website and illustrative-flow checks. No real Windows input, live model inference, signed-in provider workflow, cloud deployment or full application test suite was run for this redesign. Other browser engines and a complete assistive-technology audit remain untested.
 
 Public website: **https://d30cb15ggw36n1.cloudfront.net**
 
@@ -20,9 +47,9 @@ Open `http://127.0.0.1:4173`. The generated `dist/` directory is ignored by Git.
 
 ## Publishing a release
 
-`releases.json` is the versioned source of truth, including past releases. Only verified, available packages belong here; there are currently no stable releases. The latest archive is `2026.10.11-pilot-r13`; the initial `2026.10.11-pilot` archive remains available unchanged. Both are unsigned development pilots.
+`releases.json` is the versioned source of truth, including past releases. Only verified, available packages belong here; there are currently no stable releases. The manifest's `latest` field selects the current download. Historical archives remain available unchanged.
 
-The r13 content follows `docs/user-guide.md`, `docs/implementation-status.md`, and the current desktop implementation: describe a task and launch a browser, or prepare the foreground window with Ctrl+Alt+Space; follow the floating visual guide; retry the current target with Find click target; and verify an action with Check screen. The website demo illustrates these distinct operations without capturing a screen or contacting an AI service. The latest app requires internet and an invited pilot account; its offline walkthrough has been removed. Autonomy is not presented as a released capability.
+Historical r13 website content followed the then-current user guide and desktop implementation: describe a task and launch a browser, prepare the foreground window with Ctrl+Alt+Space, follow the floating guide, retry a target, and verify an action. That version required internet and an invited account, removed offline walkthroughs, and did not include autonomy. The current presentation content describes both Guided and Autonomous pilot modes with their documented limits.
 
 The r13 ZIP is preserved byte for byte from the existing application package: 120,032,437 bytes, SHA-256 `d5fcace83287d657fade82399192b39df85ae345bf2c49c0768e56173ae11514`. All 318 entries in its embedded checksum manifest were verified before publication. This establishes package integrity, not native workflow qualification.
 
@@ -57,14 +84,14 @@ The initial design comparison below is historical. The r13 update retains the de
 
 Initial visual comparison covered the three section concepts and desktop/mobile browser renders:
 
-| Reference point | Implementation and adjustment |
-| --- | --- |
-| Charcoal, warm white, citron and thin section rules | Kept the specified tokens and open section layout. |
-| Editorial heading and restrained body type | Replaced a static font response with the actual variable Manrope font; increased body, release and control sizes after comparing renders. |
-| Two-line desktop hero and floating product scene | Corrected heading wrapping; recreated the scene as layered CSS geometry with a perspective floor, target ring and pointer. The guide is simplified to keep its message legible. |
-| Three-step workflow with a light Notepad canvas | Implemented real tab states, highlighted Save as interaction, restart and keyboard navigation. Starts at source selection so the full flow can be explored. |
-| Download panel and release archive | Kept the layout, with real artifact size, checksum and honest pilot release notes in place of concept data. Added product/privacy FAQ answers required to explain the preview. |
-| Mobile continuation | Stacked the scene, demo and download layout; tested down to 320px with no horizontal document overflow. |
+| Reference point                                     | Implementation and adjustment                                                                                                                                                   |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Charcoal, warm white, citron and thin section rules | Kept the specified tokens and open section layout.                                                                                                                              |
+| Editorial heading and restrained body type          | Replaced a static font response with the actual variable Manrope font; increased body, release and control sizes after comparing renders.                                       |
+| Two-line desktop hero and floating product scene    | Corrected heading wrapping; recreated the scene as layered CSS geometry with a perspective floor, target ring and pointer. The guide is simplified to keep its message legible. |
+| Three-step workflow with a light Notepad canvas     | Implemented real tab states, highlighted Save as interaction, restart and keyboard navigation. Starts at source selection so the full flow can be explored.                     |
+| Download panel and release archive                  | Kept the layout, with real artifact size, checksum and honest pilot release notes in place of concept data. Added product/privacy FAQ answers required to explain the preview.  |
+| Mobile continuation                                 | Stacked the scene, demo and download layout; tested down to 320px with no horizontal document overflow.                                                                         |
 
 ## Verification scope
 

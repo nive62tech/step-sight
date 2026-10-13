@@ -24,6 +24,11 @@ public sealed partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            if (Program.Arguments.Contains("--overlay-test-host"))
+            {
+                if (!Program.Arguments.Contains("--disposable-session")) throw new InvalidOperationException("Overlay host is test-only.");
+                OverlayTestHost.Start(desktop); base.OnFrameworkInitializationCompleted(); return;
+            }
             if (Program.Arguments.Contains("--input-overlay-check"))
             {
                 if (!Program.Arguments.Contains("--allow-real-input") || !Program.Arguments.Contains("--disposable-session"))
@@ -37,6 +42,7 @@ public sealed partial class App : Application
             registrations.AddSingleton(config); registrations.AddSingleton<PermissionSupervisor>();
             registrations.AddSingleton<WindowsCapture>();
             registrations.AddSingleton<IBrowserLauncher, WindowsBrowserLauncher>();
+            registrations.AddSingleton<IApplicationHandoff, WindowsApplicationHandoff>();
             // User-selected screenshot-only operation: no UIA/DOM/browser control inspection.
             registrations.AddSingleton<IBrowserTargetResolver, NoBrowserTargetResolver>();
             registrations.AddSingleton<IScreenCapture>(s => s.GetRequiredService<WindowsCapture>());
@@ -87,6 +93,8 @@ public sealed partial class App : Application
             var window = new MainWindow { DataContext = vm, Title = config.BrandName };
             if (renderPreview && int.TryParse(UiCheck.Argument("--width", "960"), out var previewWidth)) window.Width = Math.Clamp(previewWidth, 420, 1400);
             desktop.MainWindow = window;
+            var exiting = false;
+            vm.ExitRequested += () => { if (!exiting) { exiting = true; desktop.Shutdown(); } };
             if (renderPreview)
             {
                 window.Opened += async (_, _) => await UiCheck.RunAsync(window, vm, services.GetRequiredService<LessonController>(),
@@ -106,7 +114,7 @@ public sealed partial class App : Application
             };
             void FocusTask(CaptureSource source)
             {
-                companion.Collapse(); window.Hide();
+                companion.Collapse(false); window.Hide();
                 if (!capture.FocusSource(source)) vm.Notice = "Bring your task window to the front to see the guide marker.";
             }
             void ShowPanel() { vm.OpenSettingsCommand.Execute(null); window.Show(); window.Activate(); }
@@ -118,7 +126,7 @@ public sealed partial class App : Application
                 if (companion.TryGetPlatformHandle()?.Handle is { } handle)
                 {
                     activity.IgnoreWindow(handle);
-                    if (!WindowStyles.ExcludeFromCapture(handle)) vm.Notice = "Keep the companion outside the window you share so it doesn't cover your task.";
+                    if (!WindowStyles.ShowInRecordings(handle)) vm.Notice = "Windows could not enable recording visibility for the companion. Reopen the app and try again.";
                 }
             };
             if (activity is ICompanionHotkey hotkey)
@@ -133,7 +141,7 @@ public sealed partial class App : Application
                 var epoch = controller.Permissions.Epoch;
                 Dispatcher.UIThread.Post(() =>
                 {
-                    if (vm.ObservationConsent && vm.SelectedMode != 2 && !pointer.ReducedMotion && epoch == controller.Permissions.Epoch && controller.State is LessonState.Pointing or LessonState.WaitingForLearner)
+                    if (vm.ObservationConsent && controller.Mode is InteractionMode.Guide or InteractionMode.Demonstrate && !pointer.ReducedMotion && epoch == controller.Permissions.Epoch && controller.State is LessonState.Pointing or LessonState.WaitingForLearner)
                         overlay.ShowTravel(point);
                 });
             };
@@ -143,7 +151,7 @@ public sealed partial class App : Application
                 var instruction = pointer.Instruction; var action = pointer.ExpectedAction; var bounds = pointer.TargetBounds;
                 Dispatcher.UIThread.Post(() =>
                 {
-                    if (vm.ObservationConsent && vm.SelectedMode != 2 && epoch == controller.Permissions.Epoch && controller.State is LessonState.Pointing or LessonState.WaitingForLearner)
+                    if (vm.ObservationConsent && controller.Mode is InteractionMode.Guide or InteractionMode.Demonstrate && epoch == controller.Permissions.Epoch && controller.State is LessonState.Pointing or LessonState.WaitingForLearner)
                     {
                         if (bounds is not null) highlight.ShowTarget(bounds);
                         overlay.ShowTarget(point, instruction, action, pointer.ReducedMotion);
@@ -153,13 +161,29 @@ public sealed partial class App : Application
             pointer.TargetHidden += () => Dispatcher.UIThread.Post(() => { overlay.Hide(); highlight.Hide(); companion.ClearTarget(); });
             if (services.GetRequiredService<IInputExecutor>() is WindowsInputExecutor nativeInput)
             {
-                nativeInput.CursorChanged += (x, y, phase, epoch) => Dispatcher.UIThread.Post(() =>
+                long cursorGeneration = 0;
+                nativeInput.ClearCursorAsync = async token =>
                 {
-                    if (epoch != controller.Permissions.Epoch || controller.State is not (LessonState.Acting or LessonState.Demonstrating)) return;
-                    if (phase == "moving") overlay.ShowTravel((x, y));
-                    else overlay.ShowTarget((x, y), "Checking the result after this action", "agent_" + phase, vm.ReducedMotion);
-                });
-                nativeInput.CursorHidden += epoch => Dispatcher.UIThread.Post(() => { if (epoch == controller.Permissions.Epoch) overlay.Hide(); });
+                    Interlocked.Increment(ref cursorGeneration); // Invalidate already queued movement frames.
+                    token.ThrowIfCancellationRequested();
+                    await Dispatcher.UIThread.InvokeAsync(() => { overlay.Hide(); highlight.Hide(); });
+                    token.ThrowIfCancellationRequested();
+                };
+                nativeInput.CursorChanged += (x, y, phase, epoch) =>
+                {
+                    var generation = Interlocked.Read(ref cursorGeneration);
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        if (generation != Interlocked.Read(ref cursorGeneration) || epoch != controller.Permissions.Epoch || controller.State is not (LessonState.Acting or LessonState.Demonstrating)) return;
+                        if (phase == "moving") overlay.ShowTravel((x, y));
+                        else overlay.ShowTarget((x, y), "Checking the result after this action", "agent_" + phase, vm.ReducedMotion);
+                    });
+                };
+                nativeInput.CursorHidden += epoch =>
+                {
+                    var generation = Interlocked.Increment(ref cursorGeneration);
+                    Dispatcher.UIThread.Post(() => { if (generation == Interlocked.Read(ref cursorGeneration) && epoch == controller.Permissions.Epoch) overlay.Hide(); });
+                };
                 vm.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(MainViewModel.ReducedMotion)) nativeInput.ReducedMotion = vm.ReducedMotion; };
             }
             vm.PropertyChanged += (_, args) =>
@@ -179,16 +203,15 @@ public sealed partial class App : Application
                 if (handle != 0)
                 {
                     services.GetRequiredService<IUserActivityObserver>().IgnoreWindow(handle);
-                    if (!WindowStyles.ExcludeFromCapture(handle))
-                        vm.Notice = "Keep this panel outside the window you share so it doesn't cover your task.";
+                    if (!WindowStyles.ShowInRecordings(handle))
+                        vm.Notice = "Windows could not enable recording visibility for this panel. Reopen the app and try again.";
                 }
             };
-            var exiting = false;
             var menu = new NativeMenu();
             var stop = new NativeMenuItem("Stop lesson"); stop.Click += (_, _) => vm.StopCommand.Execute(null);
             var show = new NativeMenuItem("Open companion"); show.Click += (_, _) => companion.Expand();
             var settings = new NativeMenuItem("Account & preferences"); settings.Click += (_, _) => ShowPanel();
-            var exit = new NativeMenuItem("Exit"); exit.Click += (_, _) => { exiting = true; vm.StopCommand.Execute(null); desktop.Shutdown(); };
+            var exit = new NativeMenuItem("Exit app"); exit.Click += (_, _) => vm.ExitAppCommand.Execute(null);
             menu.Items.Add(show); menu.Items.Add(settings); menu.Items.Add(stop); menu.Items.Add(exit);
             WindowIcon CreateTrayIcon(bool autonomous)
             {

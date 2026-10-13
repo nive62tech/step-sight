@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "latest": "2026.10.11-pilot-r17",
+  "latest": "2026.10.11-pilot-r21",
   "releases": [
     {
       "id": "2026.10.11-pilot",
@@ -37,6 +37,54 @@
       "sha256": "b26c532da5a95e934244fa6811f567747cf026fa03346471a935c9f8910c1643",
       "bytes": 120078973,
       "notes": "Guided and Autonomous modes, green/red animated companion, voice prompts and locally enabled phone control. Up to three retries for temporary analysis failures, fresh-screen Resume in the original mode, immediate local Stop, visible thinking/retry progress and an animated controlled cursor with click rings. Live screenshot decisions only. Real Windows test against the deployed Gemini service passed retry, pause/resume, verified click and Stop during cursor movement. Requires an invited pilot account and internet. Unsigned development build; full IRCTC and broader real-site workflows remain under qualification."
+    },
+    {
+      "id": "2026.10.11-pilot-r18",
+      "version": "2026.10.11 pilot r18",
+      "date": "2026-10-11",
+      "channel": "development",
+      "platform": "Windows 11 x64",
+      "signed": false,
+      "url": "/downloads/2026.10.11-pilot-r18/DesktopGuide-windows-x64-pilot-r18.zip",
+      "sha256": "1d50a4dc011e9f1e698863779557e47bc0f94c4c53d92b003b69bce5dddfda34",
+      "bytes": 120083571,
+      "notes": "Fixes autonomous clicks being deferred by small page changes and recovery asking you to complete a click that was never sent. Hover changes trigger fresh screenshot grounding and another bounded attempt. Meeting-link creation is treated as an ordinary authorized task action. A disposable Windows test against the deployed Gemini service completed New meeting, Create a meeting for later, and verified the resulting link with two real clicks and no manual handoff. Guided mode, voice, phone control, Resume and Stop are retained. Requires an invited pilot account and internet. Unsigned development build; the signed-in Google Meet workflow itself remains untested."
+    },
+    {
+      "id": "2026.10.11-pilot-r19",
+      "version": "2026.10.11 pilot r19",
+      "date": "2026-10-11",
+      "channel": "development",
+      "platform": "Windows 11 x64",
+      "signed": false,
+      "url": "/downloads/2026.10.11-pilot-r19/DesktopGuide-windows-x64-pilot-r19.zip",
+      "sha256": "7a15c154b23fdd18d8701079c261be87cbc61879f0cada4649682e4403fe0574",
+      "bytes": 120085951,
+      "notes": "Fixes the autonomous cursor overlay covering the button before a click. Cursor travel remains animated; overlays are cleared before input and the click ring appears after dispatch. Guided marker requests cannot interrupt Autonomous mode. A separate-process Windows test reproduced the covered target and then passed one real click with this fix. Retains r18 meeting-link creation and recovery, Guided mode, voice, phone control, Resume and Stop. Requires an invited pilot account and internet. Unsigned development build; the signed-in Google Meet workflow itself remains untested."
+    },
+    {
+      "id": "2026.10.11-pilot-r20",
+      "version": "2026.10.11 pilot r20",
+      "date": "2026-10-11",
+      "channel": "development",
+      "platform": "Windows 11 x64",
+      "signed": false,
+      "url": "/downloads/2026.10.11-pilot-r20/DesktopGuide-windows-x64-pilot-r20.zip",
+      "sha256": "bf10fd8f7ef424ba3b47b64106f962dbec58076f40fcbf2821b9e2cd485ba270",
+      "bytes": 120095439,
+      "notes": "Keeps the whole task and bounded verified history across screenshot turns and Resume. After creating and copying a meeting link, the agent can open installed WhatsApp Desktop when explicitly named in your prompt and continue searching for the requested chat. Detects popup action cycles even when pixels change; recovery is limited to 12 retries. App handoff preserves the task action budget and expiry, rejects late responses after Stop, and does not reset the session or goal. Live Gemini synthetic image checks passed Copy link, Open WhatsApp and chat search. Signed-in Google Meet and WhatsApp together remain untested. Requires invited pilot account and internet. Unsigned development build."
+    },
+    {
+      "id": "2026.10.11-pilot-r21",
+      "version": "2026.10.11 pilot r21",
+      "date": "2026-10-11",
+      "channel": "development",
+      "platform": "Windows 11 x64",
+      "signed": false,
+      "url": "/downloads/2026.10.11-pilot-r21/DesktopGuide-windows-x64-pilot-r21.zip",
+      "sha256": "7d4860f0b938b7d23dbda88caf8e1c7b05593ddf5edcaef7386cf46414584209",
+      "bytes": 120100469,
+      "notes": "The blob, thinking/action dock, cursor, outlines and panels are now visible in desktop recordings and screen sharing. Share the entire screen or monitor to include these separate floating windows. Agent screenshots still isolate or locally mask the assistant UI. Opening and closing the deck uses a smooth slide/fade, respects Reduced motion and handles rapid toggles. Visible Exit app controls stop the task and quit completely. Retains r20 verified task history, meeting-to-WhatsApp Desktop handoff when named in your prompt, popup-cycle replanning and 12 recovery retries. Focused deterministic, headless UI and native synthetic capture checks passed without model calls or real input. Signed-in Meet/WhatsApp and individual third-party recorders remain untested. Requires invited pilot account and internet. Unsigned development build."
     }
   ]
 }

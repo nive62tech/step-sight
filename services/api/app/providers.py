@@ -170,11 +170,27 @@ class GeminiProvider:
             "If previous step is not CONFIRMED, return no next step, no action proposal and completed=false; explain recovery in verification. "
             "Evidence is a short description of what is visible in the CURRENT image. Do not generate identifiers. "
             "Never mark the whole lesson complete without current visual evidence of the learner's requested outcome. Lesson milestones are context, not a fixed sequence. "
+            "The original goal may contain several ordered subgoals in different apps. Keep the entire goal in view. "
+            "lesson.verified_history contains earlier positively verified steps; retain that progress even when it is no longer on screen. "
+            "Do not restart a completed subgoal, recreate a meeting, reopen its popup or recopy its link merely because the screenshot changed. "
+            "After verifying the previous step, choose the earliest remaining part of the original goal. A copied-link toast confirms the copy step, "
+            "not completion of a later app/chat search. Use recent_decisions to detect back-and-forth loops and choose a different way forward. "
             "Give a brief explanation, not hidden reasoning. Sensitive entry, security checks, payment, permissions, deletion, commands, deployments and publishing are manual. "
             "Do not propose key chords or typing when focused input or risk is uncertain. Proposals are optional, single primitives, never permissions."
         )
         if repair:
             system += " Prior output failed the schema; emit exactly the bounded schema. Never infer success to repair formatting."
+        # Retain the original goal/current evidence. Drop oldest ephemeral history
+        # first if a long task approaches the bounded inference context.
+        while len(json.dumps(prompt, ensure_ascii=False)) > self.settings.max_context_chars:
+            history = lesson.get("verified_history", [])
+            decisions = lesson.get("recent_decisions", [])
+            if decisions:
+                decisions.pop(0)
+            elif history:
+                history.pop(0)
+            else:
+                break
         if len(json.dumps(prompt, ensure_ascii=False)) > self.settings.max_context_chars:
             raise ProviderUnavailable("context exceeds configured bounds")
         contents = [json.dumps(prompt, ensure_ascii=False), types.Part.from_bytes(data=image, mime_type="image/png" if image.startswith(b"\x89PNG") else "image/jpeg")]
@@ -187,6 +203,14 @@ class GeminiProvider:
                 "with matching expected_user_action and a visible target. For typing, the intended field MUST visibly have keyboard focus; "
                 "otherwise propose clicking that field first. Type only task-relevant non-secret text; never code, shell commands or credentials. "
                 "Use bounded left click, vertical scroll, typing or allowed navigation keys. Do not use clipboard extraction. "
+                "Clicking a visible Copy link control is ordinary navigation when requested; verify its visible feedback without reading the clipboard. "
+                "When the next unfinished subgoal requires a different installed app explicitly named in the original goal, and its identifier is "
+                "in lesson.task_context.allowed_applications, propose open_app with that application identifier, expected_user_action=open_app, "
+                "target=null and a postcondition that its window is visible. The desktop validates and launches it locally; do not try to find "
+                "a desktop app inside a browser, close/reopen the meeting popup, or create another meeting instead. Never invent an app identifier. "
+                "After app_handoff, verify the destination from the fresh screenshot, then continue the remaining goal there, such as finding "
+                "the requested WhatsApp chat. Opening WhatsApp or searching for a named chat is not sending a message. "
+                "For clients without allowed_applications, do not propose open_app. Do not claim completion until every requested subgoal is satisfied. "
                 "When the user asks to create a meeting, opening New meeting and creating a meeting link for later are ordinary "
                 "authorized task actions, not booking confirmations or publishing. Return grounded low-risk click proposals for "
                 "those visible controls and continue until the requested meeting/link is visibly created; do not merely point and "
@@ -203,6 +227,8 @@ class GeminiProvider:
                 "or a pre-click/hover check requested a fresh image. Do not ask the user to finish an action that was never sent. "
                 "If the same enabled button is still visible, return NOT_YET verification and a fresh grounded proposal to click it. "
                 "Hover feedback alone is not progress, a manual task, or uncertainty about an already dispatched action. "
+                "On learner_event=replan, earlier actions WERE dispatched; this is loop recovery, not recover. Preserve verified_history, "
+                "inspect the current screenshot, and select the next unfinished subgoal without repeating the completed cycle. "
                 "Use previous_step.uncertainty as context and reconsider the visible situation, including scrolling or ordinary dismissal, "
                 "instead of repeating the hidden target. On learner_event=resume, the user returned control: replan from the fresh image "
                 "and the original goal, allowing for changes made while paused. Resume itself is not evidence of progress. "

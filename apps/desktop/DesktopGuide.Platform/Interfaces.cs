@@ -3,6 +3,13 @@ using DesktopGuide.Core;
 namespace DesktopGuide.Platform;
 
 public sealed record CaptureSource(Guid ScopeId, Guid TargetId, string Label, string Kind);
+public sealed record ApplicationHandoffResult(CaptureSource Source, DispatchLease Lease);
+public interface IApplicationHandoff
+{
+    IReadOnlyList<string> SupportedApplications { get; }
+    Task<ApplicationHandoffResult> OpenAsync(LocalCapability capability, ActionProposal proposal, ScreenFrame frame,
+        CaptureSource source, CancellationToken cancellation);
+}
 public interface ICompanionHotkey
 {
     event Action? Invoked;

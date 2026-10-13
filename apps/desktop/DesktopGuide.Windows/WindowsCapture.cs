@@ -158,9 +158,14 @@ public sealed class WindowsCapture : IScreenCapture, IWindowTracker
         if (before.PixelDigest == after.PixelDigest) return false;
         using var original = new Bitmap(new MemoryStream(before.Png));
         using var current = new Bitmap(new MemoryStream(after.Png));
+        var ignoredMasks = before.PrivacyMasks.Concat(after.PrivacyMasks).ToArray();
         int changed = 0;
         for (int y = 0; y < 36; y++) for (int x = 0; x < 64; x++)
         {
+            // Moving our drawn marker must not trigger another model turn in monitor
+            // mode. Changes under any old/new mask are not observable evidence.
+            var nx = x / 64d; var ny = y / 36d;
+            if (ignoredMasks.Any(mask => nx >= mask.Left && nx <= mask.Right && ny >= mask.Top && ny <= mask.Bottom)) continue;
             var a = original.GetPixel(x * original.Width / 64, y * original.Height / 36);
             var b = current.GetPixel(x * current.Width / 64, y * current.Height / 36);
             if (Math.Abs(a.R - b.R) + Math.Abs(a.G - b.G) + Math.Abs(a.B - b.B) > 90) changed++;
@@ -223,7 +228,11 @@ public sealed class WindowsCapture : IScreenCapture, IWindowTracker
                 throw new SafetyException("Capture dimensions exceed the supported limit");
             var entry = sources[source.ScopeId];
             cancellation.ThrowIfCancellationRequested();
+            var assistantWindows = entry.Monitor ? AssistantCaptureMasks.Snapshot(ownTestWindows) : null;
             using var original = entry.Monitor ? await Task.Run(() => Gdi(rect), cancellation) : await wgc.CaptureAsync(entry.Handle, cancellation);
+            if (assistantWindows is not null && !assistantWindows.SequenceEqual(AssistantCaptureMasks.Snapshot(ownTestWindows)))
+                throw new SafetyException("Desktop Guide moved during the image capture. Observe again after it settles.");
+            var filteredMasks = masks.Concat(assistantWindows is null ? [] : AssistantCaptureMasks.Project(rect, assistantWindows.Values)).ToArray();
             if (!entry.Monitor && (original.Width != rect.Width || original.Height != rect.Height))
                 throw new SafetyException("Window capture size changed; select and preview again");
             var scale = Math.Min(1, 1600d / Math.Max(original.Width, original.Height));
@@ -232,11 +241,13 @@ public sealed class WindowsCapture : IScreenCapture, IWindowTracker
             using (var graphics = Graphics.FromImage(output))
             {
                 graphics.DrawImage(original, 0, 0, width, height);
-                foreach (var mask in masks)
+                foreach (var mask in filteredMasks)
                 {
                     mask.Validate();
-                    graphics.FillRectangle(Brushes.Black, (float)(mask.Left * width), (float)(mask.Top * height),
-                        (float)Math.Ceiling((mask.Right - mask.Left) * width), (float)Math.Ceiling((mask.Bottom - mask.Top) * height));
+                    // Round outward after scaling so an edge pixel never leaks through.
+                    var left = (int)Math.Floor(mask.Left * width); var top = (int)Math.Floor(mask.Top * height);
+                    graphics.FillRectangle(Brushes.Black, left, top,
+                        (int)Math.Ceiling(mask.Right * width) - left, (int)Math.Ceiling(mask.Bottom * height) - top);
                 }
             }
             using var stream = new MemoryStream(); output.Save(stream, ImageFormat.Png);
@@ -250,7 +261,7 @@ public sealed class WindowsCapture : IScreenCapture, IWindowTracker
             else geometry = geometry with { Id = Guid.NewGuid() };
             geometries[source.ScopeId] = geometry;
             var frame = new ScreenFrame(new(Guid.NewGuid(), DateTimeOffset.UtcNow, source.ScopeId, geometry.Id, width, height, true),
-                geometry, png, Convert.ToHexString(SHA256.HashData(png))) { PrivacyMasks = masks.ToArray() };
+                geometry, png, Convert.ToHexString(SHA256.HashData(png))) { PrivacyMasks = filteredMasks };
             frame.Validate(); return frame;
         }
         catch { wgc.Stop(); throw; }

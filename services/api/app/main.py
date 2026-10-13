@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import random
+import re
 import time
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -350,9 +351,7 @@ def create_app(settings: Settings | None = None, provider=None):
                 require_version(row, body.session_version)
                 if row.state not in {"OBSERVING", "WAITING_FOR_LEARNER"}:
                     raise HTTPException(409, "session is not observing; fresh local resume required")
-                if str(obs.scope_id) != row.scope_id:
-                    raise HTTPException(409, "capture scope mismatch")
-                if body.event_kind in {"autonomous_result", "recover"} and row.mode != "autonomous":
+                if body.event_kind in {"autonomous_result", "recover", "replan", "app_handoff"} and row.mode != "autonomous":
                     raise HTTPException(409, "autonomous result requires an autonomous session")
                 context = contexts.get(sid_text)
                 if context is None:
@@ -360,6 +359,16 @@ def create_app(settings: Settings | None = None, provider=None):
                         raise HTTPException(409, "unsaved session lost; start a new session")
                     context = contexts[sid_text] = {"goal": row.goal, "pending_step": None}
                 previous = context["pending_step"]
+                if str(obs.scope_id) != row.scope_id:
+                    pending_action = (context.get("pending_proposal") or {}).get("action", {})
+                    task = body.task_context
+                    if (body.event_kind != "app_handoff" or row.mode != "autonomous" or not previous
+                            or previous["expected_user_action"] != "open_app" or not task
+                            or str(task.handoff_from_scope_id) != row.scope_id
+                            or pending_action.get("kind") != "open_app"
+                            or pending_action.get("application") != task.current_application
+                            or task.current_application not in task.allowed_applications):
+                        raise HTTPException(409, "capture scope mismatch")
                 if (body.previous_step.model_dump(mode="json") if body.previous_step else None) != previous:
                     raise HTTPException(409, "previous step mismatch; reobserve")
                 locating = body.event_kind == "locate"
@@ -373,9 +382,13 @@ def create_app(settings: Settings | None = None, provider=None):
                 db.commit()
                 turn_id, owner_id, version, lesson_id = claim.id, row.owner_id, row.version, row.lesson_id
                 lesson_context = lessons.get(lesson_id) | {"verified_milestones": row.completed_steps,
-                    "language": row.language, "detail_level": row.detail_level, "interaction_mode": row.mode}
+                    "language": row.language, "detail_level": row.detail_level, "interaction_mode": row.mode,
+                    "verified_history": list(context.get("verified_history", [])),
+                    "recent_decisions": list(context.get("recent_decisions", []))}
+                if body.task_context:
+                    lesson_context["task_context"] = body.task_context.model_dump(mode="json")
                 autonomous = row.mode == "autonomous"
-                replanning = body.event_kind == "resume"
+                replanning = body.event_kind in {"resume", "replan"}
                 inference_turn = body.model_copy(update={"previous_step": None}) if replanning else body
                 if replanning and previous:
                     lesson_context["resume_context"] = {"earlier_instruction": previous["instruction"],
@@ -399,6 +412,15 @@ def create_app(settings: Settings | None = None, provider=None):
                     # Resume establishes a new grounded next action; it is not evidence
                     # that the old manual/banner instruction was completed.
                     result.verification, result.completed = None, False
+                if result.action_proposal and result.action_proposal.action.kind == "open_app":
+                    task = body.task_context
+                    requested = re.search(r"\bwhats\s*app\b", context["goal"], re.IGNORECASE)
+                    if (not autonomous or not task or not requested
+                            or result.action_proposal.action.application not in task.allowed_applications
+                            or not result.step or result.step.expected_user_action != "open_app" or result.step.target is not None
+                            or result.action_proposal.risk != "low" or result.action_proposal.provider_confirmation_required
+                            or result.step.uncertainty):
+                        raise HTTPException(502, "application was not requested or supported by this client")
                 # Each autonomous click is grounded by the dedicated coordinate tool.
                 # Calls have separate reservations and share the same turn deadline.
                 if autonomous and not locating and result.step and result.action_proposal and result.action_proposal.action.kind == "click":
@@ -451,7 +473,7 @@ def create_app(settings: Settings | None = None, provider=None):
                     raise HTTPException(502, "completion lacks verified final evidence")
                 with db_factory() as db:
                     changed = db.execute(update(Session).where(Session.id == sid_text, Session.version == version, Session.state.in_(["OBSERVING", "WAITING_FOR_LEARNER"])).values(
-                        version=version + 1, updated_at=now(), state="COMPLETED" if result.completed else "WAITING_FOR_LEARNER",
+                        version=version + 1, updated_at=now(), scope_id=str(obs.scope_id), state="COMPLETED" if result.completed else "WAITING_FOR_LEARNER",
                     ))
                     if changed.rowcount != 1:
                         raise HTTPException(409, "session interrupted; discard late response")
@@ -464,7 +486,21 @@ def create_app(settings: Settings | None = None, provider=None):
                         raise HTTPException(502, "lesson completion before required milestones")
                     db.execute(update(Turn).where(Turn.id == turn_id).values(status="completed"))
                     db.commit()
+                # Bounded, process-memory task history only. Never write model prompts,
+                # screenshots or these instruction summaries into the database/logs.
+                if previous and confirmed and not locating and not replanning:
+                    history = context.setdefault("verified_history", [])
+                    if not any(item["step_id"] == previous["id"] for item in history):
+                        history.append({"step_id": previous["id"], "instruction": previous["instruction"][:240],
+                            "action": previous["expected_user_action"],
+                            "postconditions": [p["value"][:180] for p in previous["postconditions"][:2]]})
+                        del history[:-12]
+                decisions = context.setdefault("recent_decisions", [])
+                decisions.append({"event": body.event_kind, "instruction": result.step.instruction[:180] if result.step else None,
+                    "verification": result.verification.status.value if result.verification else None})
+                del decisions[:-8]
                 context["pending_step"] = result.step.model_dump(mode="json") if result.step else previous
+                context["pending_proposal"] = result.action_proposal.model_dump(mode="json") if result.action_proposal else None
                 response = TurnResponse(**result.model_dump(), session_id=sid, session_version=version + 1,
                                         turn_id=turn_id, observation_id=obs.id, provider=settings.model_provider,
                                         timings_ms={"upload_validation": upload_validation_ms, "inference": inference_ms,

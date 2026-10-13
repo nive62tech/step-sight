@@ -55,6 +55,20 @@ public sealed class PermissionSupervisor(TimeProvider? clock = null)
                 throw new SafetyException("Autonomous task permission expired or reached its 30-action limit. Resume with fresh consent.");
     }
 
+    // Local controller only: a consumed, explicitly requested app handoff replaces
+    // the exact window without refreshing the original task expiry/action budget.
+    public void RebindAutonomousScope(DispatchLease lease, Guid newScope, Guid newTarget)
+    {
+        lock (gate)
+        {
+            RequireAutonomousTask(lease.Scope, lease.Target);
+            if (lease.Proposal.Action.Kind != "open_app" || !consumedProposals.Contains(lease.Proposal.Id)
+                || epoch != lease.Epoch || lease.Expires <= clock.GetUtcNow() || newScope == Guid.Empty || newTarget == Guid.Empty)
+                throw new SafetyException("Application handoff was cancelled or has no window");
+            scope = newScope; autonomousTarget = newTarget; approvals.Clear();
+        }
+    }
+
     public LocalCapability ApproveAutonomousAction(ActionProposal proposal, ScreenFrame frame)
     {
         lock (gate)

@@ -10,6 +10,18 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        if (args.Contains("--recording-visibility-check"))
+        {
+            if (!args.Contains("--disposable-session")) return 2;
+            return RecordingVisibility.Run();
+        }
+        if (args.Contains("--application-discovery-check"))
+        {
+            using var capture = new WindowsCapture(); using var activity = new WindowsActivity();
+            var handoff = new WindowsApplicationHandoff(new PermissionSupervisor(),capture,activity);
+            Console.WriteLine(JsonSerializer.Serialize(new { scope="installed app discovery only; no capture, launch or input", applications=handoff.SupportedApplications }));
+            return 0;
+        }
         if (args.Contains("--capture-only")) return CaptureOnly();
         if (!args.Contains("--allow-real-input") || !args.Contains("--disposable-session"))
         {
@@ -17,6 +29,8 @@ internal static class Program
             return 2;
         }
         WindowStyles.EnableDpiAwareness();
+        var overlayApp = Array.IndexOf(args, "--cross-process-overlay");
+        if (overlayApp >= 0) return CrossProcessOverlay.Run(args[overlayApp+1]);
         if (args.Contains("--live-recovery")) return LiveRecovery.Run();
         var report = new Dictionary<string, object> { ["date"] = DateTimeOffset.UtcNow, ["provider"] = "synthetic fixture; no model", ["scope"] = "test window only" };
         var title = "Desktop Guide Training Sandbox — smoke " + Guid.NewGuid().ToString("N");

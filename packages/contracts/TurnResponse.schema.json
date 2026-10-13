@@ -23,6 +23,7 @@
             "mapping": {
               "click": "#/$defs/ClickAction",
               "key_chord": "#/$defs/KeyAction",
+              "open_app": "#/$defs/OpenAppAction",
               "scroll": "#/$defs/ScrollAction",
               "type": "#/$defs/TypeAction"
             },
@@ -40,6 +41,9 @@
             },
             {
               "$ref": "#/$defs/KeyAction"
+            },
+            {
+              "$ref": "#/$defs/OpenAppAction"
             }
           ],
           "title": "Action"
@@ -210,6 +214,7 @@
             "type",
             "scroll",
             "key_chord",
+            "open_app",
             "manual",
             "wait"
           ],
@@ -298,6 +303,27 @@
         "chord"
       ],
       "title": "KeyAction",
+      "type": "object"
+    },
+    "OpenAppAction": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "open_app",
+          "title": "Kind",
+          "type": "string"
+        },
+        "application": {
+          "const": "whatsapp",
+          "title": "Application",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "application"
+      ],
+      "title": "OpenAppAction",
       "type": "object"
     },
     "Postcondition": {
